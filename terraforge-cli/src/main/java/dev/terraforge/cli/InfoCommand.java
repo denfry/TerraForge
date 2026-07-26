@@ -7,7 +7,12 @@ import dev.terraforge.core.coord.GeoBounds;
 import dev.terraforge.core.coord.MinecraftPos;
 import dev.terraforge.core.projection.Projection;
 import dev.terraforge.core.projection.ProjectionRegistry;
+import dev.terraforge.geo.dem.DemElevationProvider;
+import dev.terraforge.geo.dem.DemTileKey;
+import dev.terraforge.geo.dem.FileDemReader;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.Callable;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
@@ -21,6 +26,11 @@ public final class InfoCommand implements Callable<Integer> {
 
     @Option(names = {"-c", "--config"}, description = "Path to terraforge.yml (defaults built in).")
     Path config;
+
+    @Option(names = {"-d", "--dem"},
+            description = "Prepared tile directory to report coverage for, e.g. "
+                    + "plugins/TerraForge/data/dem")
+    Path dem;
 
     @Override
     public Integer call() throws Exception {
@@ -51,6 +61,45 @@ public final class InfoCommand implements Callable<Integer> {
         System.out.printf(java.util.Locale.ROOT, "Region size:  %d x %d blocks (~%,d chunks)%n", widthBlocks, heightBlocks, chunks);
         System.out.printf(java.util.Locale.ROOT, "Ground/block: %.0f m at the origin latitude%n",
                 transformer.groundMetersPerBlock(cfg.earth().origin().latitude()));
+
+        if (dem != null) {
+            reportDemCoverage(region);
+        }
         return 0;
+    }
+
+    /**
+     * Coverage against the configured region, so a gap is found before pregeneration rather than by
+     * a player walking into a wall of fallback elevation.
+     */
+    private void reportDemCoverage(GeoBounds region) throws java.io.IOException {
+        FileDemReader reader = new FileDemReader(dem);
+        int prepared = reader.tileCount();
+        System.out.println();
+        System.out.println("DEM tiles:    " + prepared + " prepared in " + dem);
+        if (prepared == 0) {
+            System.out.println("              run 'terraforge prepare-dem' before generating the world");
+            return;
+        }
+
+        List<DemTileKey> missing = new ArrayList<>();
+        for (int lat = (int) Math.floor(region.minLatitude()); lat < Math.ceil(region.maxLatitude()); lat++) {
+            for (int lon = (int) Math.floor(region.minLongitude()); lon < Math.ceil(region.maxLongitude()); lon++) {
+                DemTileKey key = new DemTileKey(lat, lon);
+                if (!reader.exists(key)) {
+                    missing.add(key);
+                }
+            }
+        }
+        System.out.println("DEM coverage: " + DemElevationProvider.coverageOf(reader));
+        if (missing.isEmpty()) {
+            System.out.println("Region gaps:  none");
+        } else {
+            System.out.println("Region gaps:  " + missing.size() + " tile(s) missing over the region");
+            missing.stream().limit(20).forEach(key -> System.out.println("              " + key));
+            if (missing.size() > 20) {
+                System.out.println("              ... and " + (missing.size() - 20) + " more");
+            }
+        }
     }
 }

@@ -29,6 +29,7 @@ public final class TerraForgePlugin extends JavaPlugin {
     private VerticalScale verticalScale;
     private CacheManager cacheManager;
     private IntegrationStatus integrations;
+    private DemServices dem;
 
     @Override
     public void onEnable() {
@@ -55,11 +56,27 @@ public final class TerraForgePlugin extends JavaPlugin {
         this.cacheManager = new CacheManager(config.cache().memoryLimitMb());
         this.integrations = IntegrationStatus.detect(getServer().getPluginManager(), config);
 
+        try {
+            this.dem = DemServices.load(getDataFolder().toPath(), config, cacheManager, getLogger());
+        } catch (IOException e) {
+            // Unreadable data directory, not absent data: absence is handled inside DemServices.
+            getLogger().severe(LOG_PREFIX + "Cannot read the DEM data directory: " + e.getMessage());
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
+
         printBanner();
     }
 
     @Override
     public void onDisable() {
+        if (dem != null) {
+            try {
+                dem.close();
+            } catch (IOException e) {
+                getLogger().warning(LOG_PREFIX + "Failed to release DEM resources: " + e.getMessage());
+            }
+        }
         if (cacheManager != null) {
             cacheManager.invalidateAll();
         }
@@ -89,6 +106,9 @@ public final class TerraForgePlugin extends JavaPlugin {
                 + ", exaggeration " + verticalScale.verticalExaggeration()
                 + ", " + verticalScale.metersPerBlock() + " m/block");
         getLogger().info("Test region:  " + config.testRegion().name() + " " + config.testRegion().toBounds());
+        getLogger().info("DEM tiles:    " + (dem.tileCount() == 0
+                ? "NONE (flat world -- run 'terraforge prepare-dem')"
+                : dem.tileCount() + " covering " + dem.elevation().coverage()));
         getLogger().info("Towny:        " + integrations.townyStatus());
         getLogger().info("BlueMap:      " + integrations.blueMapStatus());
         getLogger().info("Natural-only: " + (config.generation().naturalOnly() ? "ENABLED" : "DISABLED"));
@@ -115,5 +135,10 @@ public final class TerraForgePlugin extends JavaPlugin {
 
     public IntegrationStatus integrations() {
         return integrations;
+    }
+
+    /** Elevation stack; present once the plugin has enabled successfully. */
+    public DemServices dem() {
+        return dem;
     }
 }

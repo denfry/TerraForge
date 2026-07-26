@@ -30,12 +30,19 @@ The DEM is not being found. Check:
 ## Missing DEM tile warnings
 
 ```
-[TerraForge-Generator] Missing DEM tile: N52E013 (no prepared file)
-[TerraForge-Generator] Falling back to terrain.fallback-elevation (0.0 m)
+[TerraForge-Geo] Missing DEM tile: N52E013 (no prepared file); falling back to
+terrain.fallback-elevation (0.0 m)
 ```
 
 Not fatal — that area becomes flat land at the fallback elevation. Prepare the missing tiles and
-regenerate the affected chunks (already-generated chunks are not rewritten).
+regenerate the affected chunks (already-generated chunks are not rewritten). The tile directory is
+scanned at startup, so newly prepared tiles need a server restart.
+
+List the gaps before they bite:
+
+```bash
+java -jar terraforge-cli.jar info -c plugins/TerraForge/terraforge.yml --dem plugins/TerraForge/data/dem
+```
 
 ## Mountains are flat on top
 

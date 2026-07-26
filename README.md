@@ -33,24 +33,26 @@ a man-made structure.
 
 ## Status
 
-This repository is at **Phase 1–3 of the roadmap**: the architecture, build and coordinate system
-are in place and tested; terrain generation itself is being built on top of them.
+This repository is at **Phase 1–4 of the roadmap**: the architecture, coordinate system and
+elevation data path are in place and tested. Real elevation can be prepared and read; shaping it
+into chunks is next.
 
 | Phase | Scope | State |
 |---|---|---|
 | 1 | Gradle multi-module project | done |
 | 2 | Earth coordinate system | done — `GeoPoint`, `EarthLocation`, `CoordinateTransformer` |
 | 3 | Projections | done — Web Mercator, equirectangular, registry |
-| 4 | DEM provider | contracts defined (`DemTile`, `DemReader`, `.tfdem` format) |
+| 4 | DEM provider | done — `.tfdem` writer/reader, HGT and GeoTIFF transcoding, tile cache, `DemElevationProvider` |
 | 5 | Terrain generator | contracts defined (`TerrainPipeline`, `ChunkSampler`) |
 | 6 | Water / biome system | contracts defined (`WaterProvider`, `BiomeProvider`, `ClimateBiome`) |
 | 7 | Geographic database | schema written (`schema.sql`) |
 | 8 | Country / region detection | contracts defined (`GeoService`, `SpatialIndex`) |
 | 9 | Commands | permissions and command surface declared in `plugin.yml` |
-| 10 | Caching | `CacheManager`, `CacheStatistics` in place |
+| 10 | Caching | `CacheManager`, `CacheStatistics`, bounded `DemCache` |
 | 11–17 | Pregeneration, Towny, BlueMap, CLI, tests, benchmarks, docs | in progress |
 
-CLI subcommands that are not implemented yet say so explicitly and write nothing.
+`terraforge prepare-dem` and `terraforge info` are implemented. The remaining CLI subcommands say so
+explicitly and write nothing.
 
 ---
 
