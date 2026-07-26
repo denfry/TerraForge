@@ -1,0 +1,40 @@
+# --- Gradle / build --------------------------------------------------------
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+out/
+bin/
+
+# --- IDE -------------------------------------------------------------------
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.classpath
+.project
+
+# --- OS --------------------------------------------------------------------
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# --- TerraForge runtime data ----------------------------------------------
+# Геоданные НИКОГДА не попадают в репозиторий (см. DATA_SOURCES.md).
+run/
+data/
+cache/
+*.db
+*.db-shm
+*.db-wal
+*.tif
+*.tiff
+*.hgt
+*.geojson
+*.shp
+*.dbf
+*.shx
+*.prj
+*.tfdem
+*.tfmask

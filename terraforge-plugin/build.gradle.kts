@@ -1,0 +1,54 @@
+// TerraForge-Plugin: the Paper entry point. Produces the shaded, relocated plugin jar.
+
+plugins {
+    id("com.gradleup.shadow")
+}
+
+description = "TerraForge Plugin -- Paper bootstrap, commands, events, service wiring"
+
+val paperVersion = providers.gradleProperty("paper_version").get()
+val minecraftVersion = providers.gradleProperty("minecraft_version").get()
+
+dependencies {
+    implementation(project(":terraforge-core"))
+    implementation(project(":terraforge-geo"))
+    implementation(project(":terraforge-generator"))
+    implementation(project(":terraforge-towny"))
+    implementation(project(":terraforge-bluemap"))
+
+    compileOnly("io.papermc.paper:paper-api:$paperVersion")
+    testCompileOnly("io.papermc.paper:paper-api:$paperVersion")
+}
+
+tasks.named<ProcessResources>("processResources") {
+    val props = mapOf(
+        "version" to project.version.toString(),
+        "apiVersion" to minecraftVersion.substringBeforeLast('.'),
+    )
+    inputs.properties(props)
+    filesMatching("plugin.yml") { expand(props) }
+}
+
+tasks.shadowJar {
+    archiveBaseName.set("TerraForge")
+    archiveClassifier.set("")
+
+    // Relocate every shaded library so TerraForge cannot clash with other plugins.
+    listOf(
+        "org.locationtech.jts" to "jts",
+        "com.fasterxml.jackson" to "jackson",
+        "com.github.benmanes.caffeine" to "caffeine",
+        "com.zaxxer.hikari" to "hikari",
+        "org.yaml.snakeyaml" to "snakeyaml",
+        "org.sqlite" to "sqlite",
+    ).forEach { (pkg, alias) -> relocate(pkg, "dev.terraforge.libs.$alias") }
+
+    // Service files are merged by the transformer, so duplicates must reach it.
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE
+    mergeServiceFiles()
+    exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA", "META-INF/maven/**")
+}
+
+tasks.named("build") {
+    dependsOn(tasks.shadowJar)
+}

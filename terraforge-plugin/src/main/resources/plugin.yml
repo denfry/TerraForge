@@ -1,0 +1,53 @@
+name: TerraForge
+version: '${version}'
+main: dev.terraforge.plugin.TerraForgePlugin
+api-version: '${apiVersion}'
+description: Real Earth terrain engine -- natural geography only, no man-made infrastructure.
+author: TerraForge
+website: https://github.com/denfry/TerraForge
+folia-supported: false
+
+softdepend:
+  - Towny
+  - BlueMap
+
+commands:
+  earth:
+    description: TerraForge geographic commands.
+    usage: /earth <info|whereami|coords|teleport|country|city|distance|cache|debug|reload>
+    aliases: [tf, terraforge]
+
+permissions:
+  terraforge.admin:
+    description: Full access to every TerraForge command.
+    default: op
+    children:
+      terraforge.command.info: true
+      terraforge.command.location: true
+      terraforge.command.teleport: true
+      terraforge.command.debug: true
+      terraforge.command.cache: true
+      terraforge.command.pregenerate: true
+      terraforge.command.reload: true
+
+  terraforge.command.info:
+    description: View world and projection information.
+    default: true
+  terraforge.command.location:
+    description: Query your own geographic location (/earth whereami, /earth coords).
+    default: true
+  terraforge.command.teleport:
+    description: Teleport by coordinates, country or city.
+    default: op
+  terraforge.command.debug:
+    description: Toggle the debug overlay.
+    default: op
+  terraforge.command.cache:
+    description: Inspect and clear caches.
+    default: op
+  terraforge.command.pregenerate:
+    description: Start region pregeneration.
+    default: op
+  terraforge.command.reload:
+    description: Reload terraforge.yml.
+    default: op
