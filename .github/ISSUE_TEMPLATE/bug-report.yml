@@ -1,0 +1,89 @@
+name: Bug report
+description: Report a reproducible TerraForge defect.
+title: "[Bug]: "
+labels: [bug, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve TerraForge. Remove credentials, IP addresses and private paths
+        from every log and configuration excerpt.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and read the troubleshooting guide.
+          required: true
+        - label: I reproduced this on a clean Paper server with the minimum required plugins.
+          required: true
+        - label: This report does not contain a security vulnerability or sensitive data.
+          required: true
+
+  - type: input
+    id: terraforge-version
+    attributes:
+      label: TerraForge version
+      placeholder: 0.1.0
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Paper build, Java version and operating system.
+      placeholder: Paper 1.21.8 build ..., Java 21, Ubuntu 24.04
+    validations:
+      required: true
+
+  - type: dropdown
+    id: integration
+    attributes:
+      label: Optional integrations
+      multiple: true
+      options:
+        - None
+        - Towny
+        - NewTowny
+        - BlueMap
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Include the smallest region, command and configuration needed to reproduce it.
+      placeholder: |
+        1. Prepare ...
+        2. Configure ...
+        3. Run ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized logs and configuration
+      description: Drag files here or paste fenced text. Do not upload geodata unless specifically requested.
+      render: shell
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Screenshots, data provenance and whether the problem affects an existing world.

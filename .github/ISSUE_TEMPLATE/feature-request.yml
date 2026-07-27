@@ -1,0 +1,52 @@
+name: Feature request
+description: Propose a focused improvement that fits TerraForge's scope.
+title: "[Feature]: "
+labels: [enhancement, needs-triage]
+body:
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: I searched existing issues and documentation.
+          required: true
+        - label: This request does not generate roads, buildings or other man-made infrastructure.
+          required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What operator or player problem should TerraForge solve?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe behavior, configuration and expected output.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+
+  - type: dropdown
+    id: compatibility
+    attributes:
+      label: Could this change existing worlds or prepared data?
+      options:
+        - "No"
+        - "Yes"
+        - "Unsure"
+    validations:
+      required: true
+
+  - type: textarea
+    id: sources
+    attributes:
+      label: Data source and licensing notes
+      description: Required for proposals that consume a new dataset or file format.

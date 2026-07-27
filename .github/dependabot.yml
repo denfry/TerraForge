@@ -4,7 +4,31 @@ updates:
     directory: /
     schedule:
       interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Europe/Moscow
+    open-pull-requests-limit: 5
+    groups:
+      test-libraries:
+        patterns:
+          - org.junit*
+          - org.assertj*
+          - org.mockito*
+      geospatial-libraries:
+        patterns:
+          - org.locationtech*
+          - org.xerial*
+          - com.twelvemonkeys*
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Europe/Moscow
+    open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns:
+          - '*'

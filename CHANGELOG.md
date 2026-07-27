@@ -9,6 +9,17 @@ format. Both are stated explicitly per release, because either one means regener
 
 ## [Unreleased]
 
+### Changed
+
+- Reworked the public README with a project banner, compatibility matrix, quick start, command
+  reference and clearer preview-status messaging.
+- Added the MIT licence, contribution guide, support policy, code of conduct, security policy,
+  issue forms, pull request template and release runbook.
+- Hardened GitHub Actions with immutable action SHAs, least-privilege permissions, wrapper
+  validation, concurrency limits, exact artifact selection and SHA-256 release checksums.
+- Made every Gradle archive reproducible, added implementation metadata to jar manifests and
+  embedded the TerraForge licence in distributable jars.
+
 ## [0.1.0] - 2026-07-27
 
 First tagged release. A world generated with this version has the real relief, coastlines, water

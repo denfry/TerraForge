@@ -33,6 +33,10 @@ tasks.shadowJar {
     archiveBaseName.set("TerraForge")
     archiveClassifier.set("")
 
+    from(rootProject.file("LICENSE")) {
+        into("META-INF/terraforge")
+    }
+
     // Relocate every shaded library so TerraForge cannot clash with other plugins.
     listOf(
         "org.locationtech.jts" to "jts",

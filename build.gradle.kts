@@ -43,6 +43,21 @@ subprojects {
         options.encoding = "UTF-8"
     }
 
+    tasks.withType<AbstractArchiveTask>().configureEach {
+        isPreserveFileTimestamps = false
+        isReproducibleFileOrder = true
+    }
+
+    tasks.withType<Jar>().configureEach {
+        manifest {
+            attributes(
+                "Implementation-Title" to project.name,
+                "Implementation-Version" to project.version.toString(),
+                "Implementation-Vendor" to "TerraForge contributors",
+            )
+        }
+    }
+
     tasks.withType<Test>().configureEach {
         useJUnitPlatform()
         testLogging {

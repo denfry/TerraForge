@@ -1,158 +1,194 @@
-# TerraForge — Real Earth Engine for Minecraft
+<p align="center">
+  <img src="docs/assets/terraforge-banner.png" alt="A real-Earth landscape transformed into natural voxel terrain" width="1200">
+</p>
 
-TerraForge generates a Minecraft world from the **real terrain of the Earth** — real continents,
-real coastlines, real oceans and lakes, real mountain ranges, real biomes.
+<h1 align="center">TerraForge</h1>
 
-And nothing else.
+<p align="center">
+  <strong>Real Earth terrain generation for Paper — natural geography in, player-built history out.</strong>
+</p>
 
-> Germany gets the real relief of Germany. It does **not** get a pre-generated Berlin, Frankfurt,
-> autobahns, railways or buildings. Cities exist only because players build them, and Towny manages
-> them.
+<p align="center">
+  <a href="https://github.com/denfry/TerraForge/actions/workflows/build.yml"><img alt="Build" src="https://github.com/denfry/TerraForge/actions/workflows/build.yml/badge.svg"></a>
+  <a href="https://github.com/denfry/TerraForge/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/denfry/TerraForge?include_prereleases&sort=semver"></a>
+  <a href="https://github.com/denfry/TerraForge/blob/main/LICENSE"><img alt="MIT License" src="https://img.shields.io/github/license/denfry/TerraForge"></a>
+  <img alt="Paper 1.21.8" src="https://img.shields.io/badge/Paper-1.21.8-222?logo=papermc">
+  <img alt="Java 21" src="https://img.shields.io/badge/Java-21-ED8B00?logo=openjdk">
+</p>
 
+TerraForge is an open-source Paper plugin that turns prepared real-world elevation, coastlines,
+water and land-cover data into deterministic Minecraft terrain. It generates the planet beneath the
+players; roads, buildings, railways and every other man-made feature are deliberately out of scope.
+
+> [!IMPORTANT]
+> TerraForge is currently **0.1.x preview software**. Test it on a new world, keep backups, and read
+> the release notes before upgrading. Changes to projection, scale or terrain settings can create
+> permanent seams between old and new chunks.
+
+```text
+REAL EARTH DATA → TerraForge CLI → natural Minecraft terrain → players build → Towny governs → BlueMap displays
 ```
-REAL EARTH TERRAIN → TerraForge → natural Minecraft terrain → players build → Towny governs → BlueMap displays
-```
 
----
+## Why TerraForge?
 
-## What it does
+- **Real relief** — mountains, valleys and coastlines come from prepared DEM data.
+- **Natural biomes** — land cover, latitude, elevation and water state drive biome selection.
+- **No runtime downloads** — production servers only read local, prepared data.
+- **Deterministic generation** — the same configuration and source data produce the same world.
+- **Conservative fallbacks** — missing coverage degrades visibly and safely instead of inventing data.
+- **Optional integrations** — Towny/NewTowny and BlueMap are detected at runtime.
+- **Operator tooling** — an offline CLI prepares, validates and inspects regional datasets.
 
 | Generated from real data | Never generated |
 |---|---|
-| Continents, coastlines, islands | Roads, highways, streets |
-| Ocean depth, lakes, natural rivers | Buildings, villages, structures |
-| Mountains, valleys, plains, deserts | Railways, bridges, airports |
-| Biomes from real land cover | Power lines, industrial areas |
-| Natural vegetation, snow, ice | Anything man-made, at all |
+| Continents, coastlines and islands | Roads, highways and streets |
+| Ocean depth, lakes and natural rivers | Buildings, villages and structures |
+| Mountains, valleys, plains and deserts | Railways, bridges and airports |
+| Biomes from real land cover | Power lines or industrial areas |
 
-`generation.natural-only: true` is the default, and the `infrastructure.*` switches must all stay
-`false` — the plugin refuses to start otherwise. There is no code path in the generator that places
-a man-made structure.
+`generation.natural-only: true` is the default. TerraForge fails closed if an infrastructure switch
+is enabled, and the generator contains no code path that places man-made structures.
 
----
+## Requirements
 
-## Status
+| Component | Version |
+|---|---|
+| Server | Paper 1.21.8 |
+| Runtime | Java 21 |
+| TerraForge data | Prepared locally with the matching CLI release |
+| Optional | Towny/NewTowny, BlueMap |
 
-**Version 0.1.0** — the first tagged release. A world generated now has the real relief, coastlines,
-water and land cover of the Earth, with countries, regions and place names behind the commands, town
-geography for Towny and geographic markers on BlueMap. Missing data coverage always falls back
-conservatively rather than failing.
+Exact supported versions are defined in [`gradle.properties`](gradle.properties). Paper forks may
+work, but the public compatibility target is Paper.
 
-While the major version is `0`, a minor bump may change the world or prepared-data format; each
-release says so explicitly. See [CHANGELOG.md](CHANGELOG.md).
+## Quick start
 
-| Phase | Scope | State |
-|---|---|---|
-| 1 | Gradle multi-module project | done |
-| 2 | Earth coordinate system | done — `GeoPoint`, `EarthLocation`, `CoordinateTransformer` |
-| 3 | Projections | done — Web Mercator, equirectangular, registry |
-| 4 | DEM provider | done — `.tfdem` writer/reader, memory-mapped tiles, `DemElevationProvider`; source input is SRTM HGT or north-up WGS84 GeoTIFF |
-| 5 | Terrain generator | done — `DefaultTerrainPipeline`, `CachingChunkSampler`, Paper `ChunkGenerator`, surface palette |
-| 6 | Water / biome system | in progress — prepared WKB water polygons and `.tflc` land-cover grids are loaded at runtime; broader source-format support remains |
-| 7 | Geographic database | done — prepared SQLite countries, regions and gazetteer cities, loaded read-only at startup |
-| 8 | Country / region detection | done — `SqliteBoundaryIndex` over a JTS `STRtree` with exact point-in-polygon tests |
-| 9 | Commands | done — `/earth` info, whereami, coords, distance, country, city, teleport, cache, pregenerate, towny, debug (+ live overlay), reload, with argument tab completion |
-| 10 | Caching | done — `CacheManager`, byte-bounded tile cache, `CacheStatistics` |
-| 13 | BlueMap | done — `GeoMarkerService` registry published as TerraForge-owned marker sets, re-published on BlueMap reload |
-| 14 | CLI | done — `info`, `prepare-dem`, `prepare-boundaries`, `prepare-cities`, `prepare-landcover`, `prepare-geo`, `prepare-region`, `validate`, `pregenerate` |
-| 11 | Pregeneration | done — in-game job, one chunk per tick, plus an offline planner with a DEM coverage check |
-| 12 | Towny / NewTowny | done — geography on creation, spawn move, rename and deletion; `/earth towny refresh` backfill; SQLite writes off the server thread |
-| 15 | Tests | done — unit and integration tests per module; `./gradlew build` runs them all |
-| 16 | Benchmarks | done — `CoordinateBenchmark` for the per-column maths, `GeographyBenchmark` for server-thread lookups on an oversized dataset |
-| 17 | Documentation | in progress — every shipped feature is documented; the docs grow with the roadmap |
-
-Every CLI subcommand is implemented. `terraforge validate` checks a prepared database for the
-problems that survive import — overlapping boundaries, duplicate ISO codes, missing or misplaced
-capitals — and prints a coverage report.
-
----
-
-## Modules
-
-```
-TerraForge
-├── terraforge-core        pure Java: coordinates, projection, config, service API   (no Paper)
-├── terraforge-geo         GIS: DEM tiles, spatial index, SQLite database            (no Paper)
-├── terraforge-generator   terrain pipeline + Paper ChunkGenerator
-├── terraforge-towny       optional Towny bridge         (soft dependency)
-├── terraforge-bluemap     optional BlueMap bridge       (soft dependency)
-├── terraforge-plugin      Paper entry point, commands, wiring → the shipped jar
-├── terraforge-cli         offline DEM/geodata preparation
-└── terraforge-benchmark   JMH harness
-```
-
-**The architectural rule: Minecraft never learns about GIS.** Paper types appear only in
-`terraforge-generator`, `terraforge-plugin` and the two integration modules. The core and geo
-modules would compile unchanged against a different game engine.
-
-Note: the spec lists six modules; `terraforge-plugin` was split out of `terraforge-generator` so the
-Paper bootstrap (commands, events, service registration) stays separate from the terrain pipeline,
-and `terraforge-benchmark` was added to keep JMH out of the shipped jar.
-
----
-
-## Build
+1. Download the plugin and CLI jars from the
+   [latest GitHub release](https://github.com/denfry/TerraForge/releases/latest).
+2. Put `TerraForge-<version>.jar` in the server's `plugins/` directory and start the server once.
+3. Prepare a bounded test region offline:
 
 ```bash
-./gradlew build              # everything, incl. tests
-./gradlew test               # tests only
-./gradlew :terraforge-plugin:shadowJar   # plugin jar
-./gradlew :terraforge-cli:shadowJar      # CLI jar
-./gradlew :terraforge-benchmark:jmh      # benchmarks
+java -jar terraforge-cli-<version>.jar prepare-region \
+    --lat-min 47.0 --lat-max 55.5 --lon-min 5.0 --lon-max 15.5 \
+    -i ./source-data \
+    -o ./server/plugins/TerraForge
+```
+
+4. Register the generator in `bukkit.yml`:
+
+```yaml
+worlds:
+  earth:
+    generator: TerraForge
+```
+
+5. Start Paper and verify the setup:
+
+```text
+/earth info
+/earth whereami
+```
+
+TerraForge does not bundle or download geodata. The complete workflow, expected source layout and
+world-creation options are documented in the
+[installation guide](docs/installation.md) and [data-source guide](DATA_SOURCES.md).
+
+## Commands
+
+The root command is `/earth`; `/tf` and `/terraforge` are aliases.
+
+| Command | Purpose | Default permission |
+|---|---|---|
+| `/earth info` | Show world, scale and projection information | Everyone |
+| `/earth whereami` | Show the current real-world location | Everyone |
+| `/earth coords <lat> <lon>` | Convert geographic coordinates | Everyone |
+| `/earth distance <lat> <lon>` | Measure geodesic distance | Everyone |
+| `/earth country <name>` | Inspect a country | Everyone |
+| `/earth city <name>` | Inspect a city | Everyone |
+| `/earth teleport city <name>` | Teleport to a prepared city | Operators |
+| `/earth teleport country <name>` | Teleport to a prepared country | Operators |
+| `/earth pregenerate <radius>` | Generate a bounded chunk region | Operators |
+| `/earth cache [clear]` | Inspect or invalidate caches | Operators |
+| `/earth towny refresh` | Backfill Towny geography | Operators |
+| `/earth debug [overlay]` | Inspect terrain sampling | Operators |
+| `/earth reload` | Validate and reload safe runtime state | Operators |
+
+See [`plugin.yml`](terraforge-plugin/src/main/resources/plugin.yml) for the exact permission nodes.
+
+## Architecture
+
+```text
+TerraForge
+├── terraforge-core        coordinates, projections, config and service APIs
+├── terraforge-geo         DEM tiles, land cover, spatial indexes and SQLite
+├── terraforge-generator   terrain pipeline and Paper ChunkGenerator
+├── terraforge-towny       optional Towny/NewTowny bridge
+├── terraforge-bluemap     optional BlueMap bridge
+├── terraforge-plugin      Paper entry point and the shipped plugin jar
+├── terraforge-cli         offline data preparation and validation
+└── terraforge-benchmark   JMH performance harness
+```
+
+The central architectural rule is simple: **Minecraft never learns about GIS**. Paper types stay in
+the generator, plugin and integration modules; core geography remains plain Java. See the
+[architecture guide](docs/architecture.md) for module boundaries and data flow.
+
+## Build from source
+
+```bash
+./gradlew build
+./gradlew :terraforge-plugin:shadowJar
+./gradlew :terraforge-cli:shadowJar
 ```
 
 Artifacts:
 
-- `terraforge-plugin/build/libs/TerraForge-<version>.jar` → drop into `plugins/`
-- `terraforge-cli/build/libs/terraforge-cli-<version>.jar` → run with `java -jar`
+- `terraforge-plugin/build/libs/TerraForge-<version>.jar`
+- `terraforge-cli/build/libs/terraforge-cli-<version>.jar`
 
-Requires JDK 21. Target platform versions live in `gradle.properties` and nowhere else.
-
----
-
-## Quick start (central-europe test region)
-
-The project is developed against a bounded region first — Germany and its neighbours — and only then
-scaled to the planet. See `docs/installation.md` for the full walkthrough.
-
-```bash
-# 1. prepare data offline (source datasets: see DATA_SOURCES.md)
-java -jar terraforge-cli.jar prepare-region \
-    --lat-min 47.0 --lat-max 55.5 --lon-min 5.0 --lon-max 15.5 \
-    -i ./source-data -o ./server/plugins/TerraForge
-
-# 2. inspect what the world will look like
-java -jar terraforge-cli.jar info -c ./server/plugins/TerraForge/terraforge.yml
-
-# 3. start the server, then in-game
-/earth whereami
-```
-
----
+The Gradle wrapper is the supported build entry point. A clean `build` compiles every module and
+runs all unit and integration tests.
 
 ## Documentation
 
-| Document | Contents |
+| Guide | Contents |
 |---|---|
-| [docs/architecture.md](docs/architecture.md) | module layout, layering rules, data flow |
-| [docs/installation.md](docs/installation.md) | server setup and world creation |
-| [docs/configuration.md](docs/configuration.md) | every option in `terraforge.yml` |
-| [docs/data-sources.md](docs/data-sources.md) | which datasets to use and why |
-| [docs/dem.md](docs/dem.md) | DEM preparation and the `.tfdem` format |
-| [docs/projection.md](docs/projection.md) | projections, scale, distortion |
-| [docs/towny.md](docs/towny.md) | Towny integration |
-| [docs/bluemap.md](docs/bluemap.md) | BlueMap integration |
-| [docs/performance.md](docs/performance.md) | budgets, caching, benchmarks |
-| [docs/pregeneration.md](docs/pregeneration.md) | preparing chunks ahead of players |
-| [docs/development.md](docs/development.md) | working on TerraForge |
-| [docs/troubleshooting.md](docs/troubleshooting.md) | common failures |
-| [CHANGELOG.md](CHANGELOG.md) | what changed in each release |
-| [DATA_SOURCES.md](DATA_SOURCES.md) | licences and attribution |
+| [Installation](docs/installation.md) | Paper setup, data preparation and world creation |
+| [Configuration](docs/configuration.md) | Every `terraforge.yml` option |
+| [Data sources](docs/data-sources.md) | Recommended datasets and trade-offs |
+| [DEM pipeline](docs/dem.md) | Elevation preparation and `.tfdem` |
+| [Projections](docs/projection.md) | Scale, origin and distortion |
+| [Towny](docs/towny.md) | Town geography integration |
+| [BlueMap](docs/bluemap.md) | Marker-set integration |
+| [Performance](docs/performance.md) | Budgets, caching and benchmarks |
+| [Pregeneration](docs/pregeneration.md) | Preparing chunks ahead of players |
+| [Development](docs/development.md) | Architecture rules, testing and style |
+| [Releasing](docs/releasing.md) | Versioning and release checklist |
+| [Troubleshooting](docs/troubleshooting.md) | Common failures and diagnostics |
 
----
+## Project status
 
-## Licensing
+Version **0.1.0** is the first public preview. The coordinate system, projections, terrain pipeline,
+prepared geodata loaders, CLI, commands, caching, pregeneration, Towny integration, BlueMap
+integration, tests and benchmarks are implemented. Broader source-format support and production
+feedback remain active work.
 
-TerraForge ships **no geodata**. Every dataset is downloaded and prepared by the server operator,
-under its own licence. See [DATA_SOURCES.md](DATA_SOURCES.md) for sources, licences and required
-attribution.
+While the major version is `0`, a minor release may change the world or prepared-data format. Every
+such change is called out in the [changelog](CHANGELOG.md).
+
+## Contributing and support
+
+Bug reports, focused pull requests and dataset-validation feedback are welcome. Start with
+[`CONTRIBUTING.md`](CONTRIBUTING.md), use the provided issue forms, and read
+[`SUPPORT.md`](SUPPORT.md) before opening an installation question.
+
+Please report security issues privately as described in [`SECURITY.md`](SECURITY.md).
+
+## License and data
+
+TerraForge source code is available under the [MIT License](LICENSE).
+
+TerraForge ships **no geodata**. Every dataset is downloaded and prepared by the server operator
+under its own licence. Required attribution and redistribution notes are listed in
+[`DATA_SOURCES.md`](DATA_SOURCES.md).

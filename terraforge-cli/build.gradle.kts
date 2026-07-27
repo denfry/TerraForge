@@ -25,6 +25,9 @@ dependencies {
 tasks.shadowJar {
     archiveBaseName.set("terraforge-cli")
     archiveClassifier.set("")
+    from(rootProject.file("LICENSE")) {
+        into("META-INF/terraforge")
+    }
     manifest {
         attributes(
             "Main-Class" to "dev.terraforge.cli.TerraForgeCli",

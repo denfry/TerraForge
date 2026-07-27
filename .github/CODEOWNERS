@@ -1,0 +1,5 @@
+# Keep release automation and public project policy changes under maintainer review.
+/.github/ @denfry
+/SECURITY.md @denfry
+/gradle/ @denfry
+/gradle.properties @denfry

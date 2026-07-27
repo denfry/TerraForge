@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Installation and troubleshooting guide
+    url: https://github.com/denfry/TerraForge/blob/main/docs/troubleshooting.md
+    about: Check known setup and data-preparation failures before opening an issue.
+  - name: Security vulnerability
+    url: https://github.com/denfry/TerraForge/security/advisories/new
+    about: Report security problems privately. Do not disclose them in a public issue.
