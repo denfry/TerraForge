@@ -35,6 +35,16 @@ tasks.shadowJar {
     // Service files are merged by the transformer, so duplicates must reach it.
     duplicatesStrategy = DuplicatesStrategy.INCLUDE
     mergeServiceFiles()
+    // Licences are not runtime resources; excluding them prevents duplicate ZIP entries while
+    // preserving deliberately merged service descriptors.
+    exclude(
+        "META-INF/LICENSE*",
+        "META-INF/NOTICE*",
+        "META-INF/*.SF",
+        "META-INF/*.DSA",
+        "META-INF/*.RSA",
+        "META-INF/maven/**",
+    )
 }
 
 tasks.named("build") {

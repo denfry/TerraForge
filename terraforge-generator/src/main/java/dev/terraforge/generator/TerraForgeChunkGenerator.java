@@ -7,6 +7,7 @@ import dev.terraforge.generator.pipeline.ChunkSampler;
 import dev.terraforge.generator.pipeline.TerrainPipeline;
 import dev.terraforge.generator.surface.SurfacePalette;
 import java.util.Random;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.bukkit.HeightMap;
 import org.bukkit.Material;
 import org.bukkit.generator.BiomeProvider;
@@ -28,6 +29,9 @@ import org.bukkit.generator.WorldInfo;
  */
 public final class TerraForgeChunkGenerator extends ChunkGenerator {
 
+    private static final System.Logger LOG = System.getLogger("TerraForge-Generator");
+    private static final AtomicBoolean FIRST_DEM_CHUNK_LOGGED = new AtomicBoolean();
+
     private final TerrainPipeline pipeline;
     private final VerticalScale verticalScale;
     private final BiomeMapper biomeMapper;
@@ -48,6 +52,18 @@ public final class TerraForgeChunkGenerator extends ChunkGenerator {
         ChunkSampler.ChunkSamples samples = pipeline.sampleChunk(chunkX, chunkZ);
         int floor = chunk.getMinHeight() + bedrockThickness;
         int ceiling = chunk.getMaxHeight() - 1;
+
+        // Paper promises an empty ChunkData when shouldGenerateNoise() is false. Leaf's generation
+        // pipeline can still hand us prefilled vanilla noise for a newly-created Multiverse world;
+        // clear it explicitly so DEM columns always replace, never merge with, vanilla terrain.
+        chunk.setRegion(0, chunk.getMinHeight(), 0, 16, chunk.getMaxHeight(), 16, Material.AIR);
+
+        if (FIRST_DEM_CHUNK_LOGGED.compareAndSet(false, true)) {
+            TerrainSample centre = samples.at(8, 8);
+            LOG.log(System.Logger.Level.INFO, "[TerraForge-Generator] DEM terrain active at chunk {0},{1}: "
+                    + "centre={2} m, surface Y={3}", chunkX, chunkZ,
+                    centre.elevationMeters(), centre.surfaceY());
+        }
 
         for (int localZ = 0; localZ < ChunkSampler.ChunkSamples.SIZE; localZ++) {
             for (int localX = 0; localX < ChunkSampler.ChunkSamples.SIZE; localX++) {
@@ -115,9 +131,21 @@ public final class TerraForgeChunkGenerator extends ChunkGenerator {
         return false; // the terrain comes from the DEM, not from vanilla's noise router
     }
 
+    /** Leaf may select this per-chunk overload instead of the legacy no-argument hook. */
+    @Override
+    public boolean shouldGenerateNoise(WorldInfo worldInfo, Random random, int chunkX, int chunkZ) {
+        return false;
+    }
+
     @Override
     public boolean shouldGenerateSurface() {
         return false; // surface materials come from real land cover, see SurfacePalette
+    }
+
+    /** Prevents Leaf from applying a vanilla surface pass over DEM terrain. */
+    @Override
+    public boolean shouldGenerateSurface(WorldInfo worldInfo, Random random, int chunkX, int chunkZ) {
+        return false;
     }
 
     @Override
@@ -128,7 +156,13 @@ public final class TerraForgeChunkGenerator extends ChunkGenerator {
 
     @Override
     public boolean shouldGenerateCaves() {
-        return true; // caves are natural, and they are underground where geography has nothing to say
+        return false;
+    }
+
+    /** Keep the first real-data pass deterministic; caves can return after terrain validation. */
+    @Override
+    public boolean shouldGenerateCaves(WorldInfo worldInfo, Random random, int chunkX, int chunkZ) {
+        return false;
     }
 
     @Override
@@ -146,6 +180,11 @@ public final class TerraForgeChunkGenerator extends ChunkGenerator {
     public boolean shouldGenerateStructures() {
         // Villages, temples, mineshafts, strongholds, ruins: every one of them is man-made, and
         // this is the switch that guarantees TerraForge never places one.
+        return false;
+    }
+
+    @Override
+    public boolean shouldGenerateStructures(WorldInfo worldInfo, Random random, int chunkX, int chunkZ) {
         return false;
     }
 

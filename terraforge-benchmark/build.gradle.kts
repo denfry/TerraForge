@@ -10,6 +10,10 @@ dependencies {
     implementation(project(":terraforge-geo"))
     implementation(project(":terraforge-generator"))
 
+    // The geography benchmark builds and loads a real SQLite database; the driver is not exposed
+    // by terraforge-geo's implementation dependency.
+    runtimeOnly("org.xerial:sqlite-jdbc:${providers.gradleProperty("sqlite_version").get()}")
+
     implementation("org.openjdk.jmh:jmh-core:$jmhVersion")
     annotationProcessor("org.openjdk.jmh:jmh-generator-annprocess:$jmhVersion")
 }

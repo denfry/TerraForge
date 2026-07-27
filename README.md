@@ -33,26 +33,37 @@ a man-made structure.
 
 ## Status
 
-This repository is at **Phase 5 of the roadmap**: real elevation is prepared offline, sampled at
-runtime and turned into Minecraft terrain — a world generated now has the real relief, coastlines
-and ocean floor of the Earth. Water and biomes still come from elevation and latitude rather than
-from vector datasets; that is Phase 6.
+**Version 0.1.0** — the first tagged release. A world generated now has the real relief, coastlines,
+water and land cover of the Earth, with countries, regions and place names behind the commands, town
+geography for Towny and geographic markers on BlueMap. Missing data coverage always falls back
+conservatively rather than failing.
+
+While the major version is `0`, a minor bump may change the world or prepared-data format; each
+release says so explicitly. See [CHANGELOG.md](CHANGELOG.md).
 
 | Phase | Scope | State |
 |---|---|---|
 | 1 | Gradle multi-module project | done |
 | 2 | Earth coordinate system | done — `GeoPoint`, `EarthLocation`, `CoordinateTransformer` |
 | 3 | Projections | done — Web Mercator, equirectangular, registry |
-| 4 | DEM provider | done — `.tfdem` writer/reader, memory-mapped tiles, `DemElevationProvider`; source input is SRTM HGT (GeoTIFF via GDAL for now) |
+| 4 | DEM provider | done — `.tfdem` writer/reader, memory-mapped tiles, `DemElevationProvider`; source input is SRTM HGT or north-up WGS84 GeoTIFF |
 | 5 | Terrain generator | done — `DefaultTerrainPipeline`, `CachingChunkSampler`, Paper `ChunkGenerator`, surface palette |
-| 6 | Water / biome system | partial — `ClimateBiomeResolver` and the Minecraft mapping are done; water and land cover still derive from elevation (`SeaLevelWaterProvider`) until vector data is imported |
-| 7 | Geographic database | schema written (`schema.sql`) |
-| 8 | Country / region detection | contracts defined (`GeoService`, `SpatialIndex`) |
-| 9 | Commands | permissions and command surface declared in `plugin.yml` |
+| 6 | Water / biome system | in progress — prepared WKB water polygons and `.tflc` land-cover grids are loaded at runtime; broader source-format support remains |
+| 7 | Geographic database | done — prepared SQLite countries, regions and gazetteer cities, loaded read-only at startup |
+| 8 | Country / region detection | done — `SqliteBoundaryIndex` over a JTS `STRtree` with exact point-in-polygon tests |
+| 9 | Commands | done — `/earth` info, whereami, coords, distance, country, city, teleport, cache, pregenerate, towny, debug (+ live overlay), reload, with argument tab completion |
 | 10 | Caching | done — `CacheManager`, byte-bounded tile cache, `CacheStatistics` |
-| 11–17 | Pregeneration, Towny, BlueMap, CLI, tests, benchmarks, docs | in progress |
+| 13 | BlueMap | done — `GeoMarkerService` registry published as TerraForge-owned marker sets, re-published on BlueMap reload |
+| 14 | CLI | done — `info`, `prepare-dem`, `prepare-boundaries`, `prepare-cities`, `prepare-landcover`, `prepare-geo`, `prepare-region`, `validate`, `pregenerate` |
+| 11 | Pregeneration | done — in-game job, one chunk per tick, plus an offline planner with a DEM coverage check |
+| 12 | Towny / NewTowny | done — geography on creation, spawn move, rename and deletion; `/earth towny refresh` backfill; SQLite writes off the server thread |
+| 15 | Tests | done — unit and integration tests per module; `./gradlew build` runs them all |
+| 16 | Benchmarks | done — `CoordinateBenchmark` for the per-column maths, `GeographyBenchmark` for server-thread lookups on an oversized dataset |
+| 17 | Documentation | in progress — every shipped feature is documented; the docs grow with the roadmap |
 
-CLI subcommands that are not implemented yet say so explicitly and write nothing.
+Every CLI subcommand is implemented. `terraforge validate` checks a prepared database for the
+problems that survive import — overlapping boundaries, duplicate ISO codes, missing or misplaced
+capitals — and prints a coverage report.
 
 ---
 
@@ -135,6 +146,7 @@ java -jar terraforge-cli.jar info -c ./server/plugins/TerraForge/terraforge.yml
 | [docs/pregeneration.md](docs/pregeneration.md) | preparing chunks ahead of players |
 | [docs/development.md](docs/development.md) | working on TerraForge |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | common failures |
+| [CHANGELOG.md](CHANGELOG.md) | what changed in each release |
 | [DATA_SOURCES.md](DATA_SOURCES.md) | licences and attribution |
 
 ---

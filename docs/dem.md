@@ -23,6 +23,26 @@ java -jar terraforge-cli.jar prepare-dem \
     --encoding int16
 ```
 
+Two input formats are read directly:
+
+| Format | Notes |
+|---|---|
+| SRTM `.hgt` | one file per degree cell; the cell comes from the file name, e.g. `N50E008.hgt` |
+| GeoTIFF `.tif`, `.tiff` | north-up WGS84 only; sliced into the degree cells it covers |
+
+A GeoTIFF is read through its `ModelPixelScale` and `ModelTiepoint` tags, so any extent works — one
+file covering a whole country becomes as many tiles as it touches. Rotated, projected or BigTIFF
+rasters are **rejected with the GDAL command that fixes them** rather than silently misplaced:
+
+```bash
+gdalwarp -t_srs EPSG:4326 input.tif wgs84.tif
+```
+
+Output grid resolution follows the source: one-arc-second data gives 3601 samples per axis and
+three-arc-second data 1201, the same shape as `.hgt`. Resampling is nearest-neighbour on purpose —
+a DEM is measured data, and interpolating during preparation would bake in elevations no survey
+recorded. The raster's `GDAL_NODATA` value becomes a void, not a zero.
+
 Output: one file per one-degree cell, named after its south-west corner.
 
 ```

@@ -18,8 +18,12 @@ import picocli.CommandLine.Command;
         subcommands = {
                 InfoCommand.class,
                 PrepareDemCommand.class,
+                PrepareBoundariesCommand.class,
+                PrepareCitiesCommand.class,
+                PrepareLandcoverCommand.class,
                 PrepareGeoCommand.class,
                 PrepareRegionCommand.class,
+                ValidateCommand.class,
                 PregenerateCommand.class,
         })
 public final class TerraForgeCli implements Runnable {

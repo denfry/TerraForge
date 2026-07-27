@@ -55,6 +55,27 @@ generation cost:
 - elevation → block Y
 - Haversine vs Vincenty distance
 
+`GeographyBenchmark` measures the lookups that run on the **server thread**, against a synthetic
+dataset larger than a real one — 400 countries, 8,000 regions and 50,000 cities, versus roughly 250
+countries, 4,600 regions and 25,000 places in Natural Earth plus `cities15000`:
+
+| Lookup | Runs on | Cost |
+|---|---|---|
+| `countryAt` / `regionAt` | `/earth whereami`, town annotation | ~0.2 µs |
+| `searchCities` | every tab-completion keystroke | ~1.4 µs |
+| `findCity` | `/earth city`, `/earth teleport city` | ~44 µs |
+| `nearestCity` | `/earth whereami` | ~174 µs |
+
+Polygon lookups are flat in dataset size because of the R-tree; the name and nearest-place lookups
+scan, so they are the ones that grow.
+
+This benchmark earns its keep. The first run measured `nearestCity` at **28 ms** and `searchCities`
+at **9 ms** — per command and per keystroke, on the main thread, which is half a tick for one
+player pressing Tab. Both came from doing expensive work per candidate: an iterative Vincenty
+geodesic for every city, and a fresh `toLowerCase` for every name. Names are now lower-cased once at
+load and nearest-neighbour selection uses a flat-earth approximation, which orders candidates the
+same way at any distance where "nearest place" means anything.
+
 DEM sampling, biome resolution and terrain shaping get their own benchmarks as those stages land.
 
 ## Profiling method

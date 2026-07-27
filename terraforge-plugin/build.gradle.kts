@@ -46,7 +46,16 @@ tasks.shadowJar {
     // Service files are merged by the transformer, so duplicates must reach it.
     duplicatesStrategy = DuplicatesStrategy.INCLUDE
     mergeServiceFiles()
-    exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA", "META-INF/maven/**")
+    // Leaf/Paper's remapper rejects duplicate ZIP entries. Dependency licence notices are not runtime
+    // resources, while service descriptors above are merged deliberately.
+    exclude(
+        "META-INF/LICENSE*",
+        "META-INF/NOTICE*",
+        "META-INF/*.SF",
+        "META-INF/*.DSA",
+        "META-INF/*.RSA",
+        "META-INF/maven/**",
+    )
 }
 
 tasks.named("build") {

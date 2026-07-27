@@ -1,5 +1,9 @@
 package dev.terraforge.plugin;
 
+import dev.terraforge.bluemap.BlueMapMarkerHook;
+import dev.terraforge.bluemap.TerraForgeBlueMapHook;
+import dev.terraforge.core.api.GeoMarkerService;
+import dev.terraforge.core.api.InMemoryGeoMarkerService;
 import dev.terraforge.core.cache.CacheManager;
 import dev.terraforge.core.config.ConfigLoader;
 import dev.terraforge.core.config.TerraForgeConfig;
@@ -9,10 +13,20 @@ import dev.terraforge.core.projection.ProjectionRegistry;
 import dev.terraforge.core.terrain.VerticalScale;
 import dev.terraforge.geo.dem.DemElevationProvider;
 import dev.terraforge.geo.dem.FileDemReader;
+import dev.terraforge.geo.database.SqliteBoundaryIndex;
+import dev.terraforge.geo.landcover.LandcoverGridFile;
+import dev.terraforge.geo.marker.GeoMarkerPopulator;
+import dev.terraforge.geo.water.IndexedWaterProvider;
+import dev.terraforge.geo.water.SqliteWaterProvider;
 import dev.terraforge.generator.TerrainStack;
+import dev.terraforge.towny.SqliteTownGeoService;
+import dev.terraforge.towny.TownGeoListener;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Optional;
 import org.bukkit.plugin.java.JavaPlugin;
 
 /**
@@ -34,12 +48,18 @@ public final class TerraForgePlugin extends JavaPlugin {
     private FileDemReader demReader;
     private DemElevationProvider elevation;
     private TerrainStack terrain;
+    private SqliteBoundaryIndex boundaries;
+    private SqliteTownGeoService townGeography;
+    private PregenerationJob pregeneration;
     private IntegrationStatus integrations;
+    private InMemoryGeoMarkerService markers;
+    private TerraForgeBlueMapHook blueMap;
+    private DebugOverlay debugOverlay;
 
     @Override
     public void onEnable() {
         try {
-            this.config = loadConfiguration();
+            initializeTerrain();
         } catch (IOException | RuntimeException e) {
             getLogger().severe(LOG_PREFIX + "Invalid configuration: " + e.getMessage());
             getLogger().severe(LOG_PREFIX + "Fix plugins/TerraForge/terraforge.yml and restart. "
@@ -48,6 +68,31 @@ public final class TerraForgePlugin extends JavaPlugin {
             return;
         }
 
+        this.integrations = IntegrationStatus.detect(getServer().getPluginManager(), config);
+        initializeMarkers();
+        initializeTownyIntegration();
+        initializeBlueMapIntegration();
+        var earthCommand = getCommand("earth");
+        if (earthCommand == null) {
+            throw new IllegalStateException("plugin.yml is missing the earth command");
+        }
+        var executor = new EarthCommand(this);
+        earthCommand.setExecutor(executor);
+        earthCommand.setTabCompleter(executor);
+        printBanner();
+    }
+
+    /**
+     * Builds the immutable terrain stack once.
+     *
+     * <p>Multiverse probes a plugin's generator before it enables the plugin. Keeping this work
+     * idempotent lets that probe obtain a real generator without racing {@link #onEnable()}.
+     */
+    private synchronized void initializeTerrain() throws IOException {
+        if (terrain != null) {
+            return;
+        }
+        this.config = loadConfiguration();
         Projection projection = new ProjectionRegistry()
                 .create(config.earth().projection(), config.earth().origin().latitude());
         this.transformer = new CoordinateTransformer(
@@ -74,14 +119,26 @@ public final class TerraForgePlugin extends JavaPlugin {
         }
         this.elevation = new DemElevationProvider(demReader, cacheManager, config.cache().demTileCacheEntries());
 
-        this.terrain = TerrainStack.create(config, transformer, verticalScale, elevation, cacheManager);
-        this.integrations = IntegrationStatus.detect(getServer().getPluginManager(), config);
-
-        printBanner();
+        this.terrain = TerrainStack.create(config, transformer, verticalScale, elevation, cacheManager,
+                loadWaterProvider(), loadLandcoverProvider());
+        this.boundaries = loadBoundaryIndex();
     }
 
     @Override
     public void onDisable() {
+        if (blueMap != null) {
+            blueMap.disable();
+            blueMap = null;
+        }
+        if (debugOverlay != null) {
+            debugOverlay.shutdown();
+            debugOverlay = null;
+        }
+        if (townGeography != null) {
+            // Applies whatever town annotations are still queued before the JVM goes away.
+            townGeography.close();
+            townGeography = null;
+        }
         if (cacheManager != null) {
             cacheManager.invalidateAll();
         }
@@ -128,7 +185,19 @@ public final class TerraForgePlugin extends JavaPlugin {
      */
     @Override
     public org.bukkit.generator.ChunkGenerator getDefaultWorldGenerator(String worldName, String id) {
+        try {
+            initializeTerrain();
+        } catch (IOException | RuntimeException exception) {
+            getLogger().severe(LOG_PREFIX + "Cannot provide generator for " + worldName + ": "
+                    + exception.getMessage());
+            return null;
+        }
         return terrain.chunkGenerator();
+    }
+
+    void validateConfigurationForReload() throws IOException {
+        ConfigLoader loader = new ConfigLoader();
+        loader.validate(loader.load(getDataFolder().toPath().resolve("terraforge.yml")));
     }
 
     private String demSummary() {
@@ -143,6 +212,142 @@ public final class TerraForgePlugin extends JavaPlugin {
         }
         return tiles + " tiles " + elevation.coverage()
                 + (elevation.hasBathymetry() ? ", with bathymetry" : ", land only");
+    }
+
+    private dev.terraforge.core.data.WaterProvider loadWaterProvider() {
+        Path database = preparedDatabasePath();
+        if (!Files.isRegularFile(database)) {
+            getLogger().info(LOG_PREFIX + "Water: no prepared database; using elevation fallback.");
+            return new dev.terraforge.core.data.SeaLevelWaterProvider(elevation);
+        }
+        try {
+            IndexedWaterProvider provider = SqliteWaterProvider.load(database);
+            if (provider != null) {
+                getLogger().info(LOG_PREFIX + "Water: loaded prepared natural water features.");
+                return provider;
+            }
+            getLogger().info(LOG_PREFIX + "Water: prepared database has no water features; using elevation fallback.");
+        } catch (IOException exception) {
+            getLogger().warning(LOG_PREFIX + "Water: cannot load " + database + ": "
+                    + exception.getMessage() + "; using elevation fallback.");
+        }
+        return new dev.terraforge.core.data.SeaLevelWaterProvider(elevation);
+    }
+
+    private SqliteBoundaryIndex loadBoundaryIndex() {
+        Path database = preparedDatabasePath();
+        if (!Files.isRegularFile(database)) {
+            getLogger().info(LOG_PREFIX + "Boundaries: no prepared database; country lookups unavailable.");
+            return null;
+        }
+        try {
+            SqliteBoundaryIndex index = SqliteBoundaryIndex.load(database);
+            getLogger().info(LOG_PREFIX + "Geography: loaded " + index.countryCount() + " countries, "
+                    + index.regionCount() + " regions and " + index.cityCount() + " cities.");
+            return index;
+        } catch (IOException exception) {
+            getLogger().warning(LOG_PREFIX + "Boundaries: cannot load " + database + ": "
+                    + exception.getMessage() + "; country lookups unavailable.");
+            return null;
+        }
+    }
+
+    private Path preparedDatabasePath() {
+        Path pluginRoot = getDataFolder().toPath().toAbsolutePath().normalize();
+        Path database = pluginRoot.resolve(config.data().databaseFile()).normalize();
+        if (!database.startsWith(pluginRoot)) {
+            throw new IllegalArgumentException("data.database-file must stay inside the plugin directory");
+        }
+        return database;
+    }
+
+    /**
+     * Publishes the prepared geography into the marker registry.
+     *
+     * <p>The registry exists whether or not BlueMap is installed: other plugins register their own
+     * markers through it, and a later BlueMap install picks up everything already there.
+     */
+    private void initializeMarkers() {
+        this.markers = new InMemoryGeoMarkerService();
+        var bluemapConfig = config.bluemap();
+        int published = GeoMarkerPopulator.populate(markers, boundaries,
+                GeoMarkerPopulator.Options.defaults(
+                        bluemapConfig != null && bluemapConfig.cityMarkers(),
+                        bluemapConfig != null && bluemapConfig.countryLabels()));
+        getLogger().info(LOG_PREFIX + "Markers: published " + published + " geographic markers.");
+    }
+
+    private void initializeBlueMapIntegration() {
+        if (!integrations.blueMapAvailable()) {
+            return;
+        }
+        var bluemapConfig = config.bluemap();
+        blueMap = new BlueMapMarkerHook(markers, transformer, this::markerSurfaceY,
+                () -> getServer().getWorld(config.world().name()),
+                bluemapConfig.cityMarkers(), bluemapConfig.countryLabels(), getLogger());
+        blueMap.enable();
+        getLogger().info(LOG_PREFIX + "BlueMap marker integration enabled.");
+    }
+
+    /**
+     * Block height a marker floats at: the real surface, never below sea level so that a coastal
+     * or island label does not end up under water.
+     */
+    private double markerSurfaceY(double latitude, double longitude) {
+        double meters = elevation.elevationAt(latitude, longitude);
+        if (dev.terraforge.core.data.ElevationProvider.isNoData(meters)) {
+            meters = config.terrain().fallbackElevation();
+        }
+        return Math.max(verticalScale.toBlockY(meters), verticalScale.seaLevel());
+    }
+
+    private void initializeTownyIntegration() {
+        if (!getServer().getPluginManager().isPluginEnabled("Towny") || boundaries == null) return;
+        townGeography = new SqliteTownGeoService(transformer, elevation, boundaries, preparedDatabasePath(),
+                message -> getLogger().warning(LOG_PREFIX + message));
+        getServer().getPluginManager().registerEvents(new TownGeoListener(this, townGeography), this);
+        getLogger().info(LOG_PREFIX + "Towny/NewTowny geography integration enabled.");
+    }
+
+    private dev.terraforge.core.data.LandcoverProvider loadLandcoverProvider() {
+        Path directory = getDataFolder().toPath().resolve(config.data().dataDirectory()).resolve("landcover");
+        if (!Files.isDirectory(directory)) {
+            getLogger().info(LOG_PREFIX + "Land cover: no prepared grids; using climate fallback.");
+            return new dev.terraforge.core.data.ConstantLandcoverProvider(
+                    dev.terraforge.core.data.LandcoverProvider.LandcoverClass.UNKNOWN);
+        }
+        try (var files = Files.list(directory)) {
+            List<Path> grids = files.filter(Files::isRegularFile)
+                    .filter(path -> path.getFileName().toString().toLowerCase().endsWith(".tflc"))
+                    .sorted(Comparator.naturalOrder()).toList();
+            if (grids.isEmpty()) {
+                getLogger().info(LOG_PREFIX + "Land cover: no prepared grids; using climate fallback.");
+                return new dev.terraforge.core.data.ConstantLandcoverProvider(
+                        dev.terraforge.core.data.LandcoverProvider.LandcoverClass.UNKNOWN);
+            }
+            // A grid is immutable and thread-safe. The first matching grid wins, making the
+            // deterministic filename order part of the operator's explicit preparation choice.
+            List<dev.terraforge.core.data.LandcoverProvider> providers = grids.stream()
+                    .map(this::readLandcoverGrid).toList();
+            getLogger().info(LOG_PREFIX + "Land cover: loaded " + providers.size() + " prepared grid(s).");
+            return (latitude, longitude) -> providers.stream()
+                    .map(provider -> provider.landcoverAt(latitude, longitude))
+                    .filter(value -> value != dev.terraforge.core.data.LandcoverProvider.LandcoverClass.UNKNOWN)
+                    .findFirst().orElse(dev.terraforge.core.data.LandcoverProvider.LandcoverClass.UNKNOWN);
+        } catch (IOException | IllegalArgumentException exception) {
+            getLogger().warning(LOG_PREFIX + "Land cover: cannot load " + directory + ": "
+                    + exception.getMessage() + "; using climate fallback.");
+            return new dev.terraforge.core.data.ConstantLandcoverProvider(
+                    dev.terraforge.core.data.LandcoverProvider.LandcoverClass.UNKNOWN);
+        }
+    }
+
+    private dev.terraforge.core.data.LandcoverProvider readLandcoverGrid(Path grid) {
+        try {
+            return LandcoverGridFile.read(grid);
+        } catch (IOException exception) {
+            throw new IllegalArgumentException("Invalid prepared land-cover grid " + grid.getFileName(), exception);
+        }
     }
 
     // --- accessors used by the command and integration layers ---------------
@@ -175,5 +380,99 @@ public final class TerraForgePlugin extends JavaPlugin {
 
     public IntegrationStatus integrations() {
         return integrations;
+    }
+
+    /** Prepared country and region boundaries, when the operator has imported them. */
+    public Optional<SqliteBoundaryIndex> boundaries() {
+        return Optional.ofNullable(boundaries);
+    }
+
+    /** Live per-player debug overlay. Created on demand; idle until a player switches it on. */
+    synchronized DebugOverlay debugOverlay() {
+        if (debugOverlay == null) {
+            debugOverlay = new DebugOverlay(this);
+        }
+        return debugOverlay;
+    }
+
+    /**
+     * Reloads the prepared geographic database and everything derived from it.
+     *
+     * <p>Safe while players are online: boundaries, cities and markers are lookup data, so nothing
+     * already generated changes. Terrain settings are deliberately excluded -- swapping the
+     * generator at runtime would mix old and new geometry at the seam.
+     *
+     * @return a human-readable summary, or empty when no prepared database exists
+     */
+    synchronized Optional<String> reloadGeography() {
+        SqliteBoundaryIndex reloaded = loadBoundaryIndex();
+        if (reloaded == null) {
+            return Optional.empty();
+        }
+        this.boundaries = reloaded;
+        if (townGeography != null) {
+            townGeography.useGeography(reloaded);
+        }
+        int published = refreshMarkers();
+        return Optional.of(reloaded.countryCount() + " countries, " + reloaded.regionCount() + " regions, "
+                + reloaded.cityCount() + " cities, " + published + " markers");
+    }
+
+    /** Towny geography annotation, present only when Towny and a prepared database are available. */
+    Optional<SqliteTownGeoService> townGeography() {
+        return Optional.ofNullable(townGeography);
+    }
+
+    /** Registry of geographic markers, published to BlueMap when it is installed. */
+    public GeoMarkerService markers() {
+        return markers;
+    }
+
+    /** The BlueMap bridge, present only when BlueMap is installed and enabled. */
+    public Optional<TerraForgeBlueMapHook> blueMap() {
+        return Optional.ofNullable(blueMap);
+    }
+
+    /**
+     * Re-reads the geography into the marker registry and re-publishes it.
+     *
+     * <p>Safe at runtime: markers are metadata, so nothing already generated changes. This is
+     * deliberately the only part of {@code /earth reload} that takes effect without a restart.
+     *
+     * @return the number of markers published
+     */
+    int refreshMarkers() {
+        var bluemapConfig = config.bluemap();
+        int published = GeoMarkerPopulator.populate(markers, boundaries,
+                GeoMarkerPopulator.Options.defaults(
+                        bluemapConfig != null && bluemapConfig.cityMarkers(),
+                        bluemapConfig != null && bluemapConfig.countryLabels()));
+        if (blueMap != null) {
+            blueMap.refreshMarkers();
+        }
+        return published;
+    }
+
+    synchronized boolean startPregeneration(org.bukkit.World world, org.bukkit.command.CommandSender reporter,
+                                             int centreChunkX, int centreChunkZ, int radiusChunks) {
+        if (pregeneration != null) return false;
+        pregeneration = new PregenerationJob(this, world, reporter, centreChunkX, centreChunkZ, radiusChunks);
+        pregeneration.start();
+        return true;
+    }
+
+    synchronized Optional<String> pregenerationStatus() {
+        return pregeneration == null ? Optional.empty() : Optional.of(pregeneration.status());
+    }
+
+    synchronized boolean cancelPregeneration() {
+        if (pregeneration == null) return false;
+        pregeneration.cancel("cancelled");
+        pregeneration = null;
+        return true;
+    }
+
+    synchronized void clearPregeneration(PregenerationJob completed) {
+        if (pregeneration == completed) pregeneration = null;
     }
 }

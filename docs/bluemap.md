@@ -25,14 +25,29 @@ bluemap:
 
 ## Marker sets
 
-| Set | Contents | Config |
+| Set | Marker types | Config |
 |---|---|---|
-| `terraforge-cities` | populated places from the gazetteer | `city-markers` |
-| `terraforge-countries` | country and region labels | `country-labels` |
+| `terraforge-cities` | `CITY`, `CAPITAL` — populated places from the gazetteer | `city-markers` |
+| `terraforge-countries` | `COUNTRY`, `REGION` — administrative labels | `country-labels` |
+| `terraforge-poi` | `POINT_OF_INTEREST`, `CUSTOM` — registered through the API by other plugins | always on |
+
+Every set TerraForge owns starts with `terraforge-`. A set with no markers is not created at all.
+
+`TOWN` and `NATION` markers are **never** published: Towny already puts those on the map itself, and
+publishing them again would give every town two labels.
 
 Markers are **metadata**: a label at a coordinate. Registering one never places a block, structure
 or entity in the world. If Towny already publishes a marker for something, TerraForge leaves it
 alone.
+
+A marker sits at the real surface height of its coordinate, or at sea level when the surface is
+below it, so coastal and island labels stay above water.
+
+### How many cities are published
+
+The gazetteer can hold hundreds of thousands of places, which would make the web map unusable. Every
+**capital** is published unconditionally; other cities are ranked by population and capped at the
+2000 largest. Ties break by name, so the published set is the same on every start.
 
 ## Marker API
 
@@ -54,5 +69,11 @@ soon as BlueMap is installed.
 
 ## Behaviour on BlueMap reload
 
-BlueMap discards marker sets when it reloads. `TerraForgeBlueMapHook.refreshMarkers()` re-registers
-TerraForge's sets afterwards; markers owned by other plugins are never touched.
+BlueMap discards marker sets when it reloads. The hook registers a `BlueMapAPI.onEnable` listener,
+which fires once when BlueMap first becomes ready and again after every reload; each time it removes
+only the sets whose id starts with `terraforge-` and publishes them again from the registry. Sets
+owned by other plugins are never read, replaced or removed.
+
+The same happens on `/earth reload`: the marker registry is rebuilt from the prepared database and
+re-published. Markers are metadata, so this is safe at runtime — unlike terrain settings, which
+still require a restart.

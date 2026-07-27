@@ -49,6 +49,16 @@ Out-of-range heights are soft-clamped, never flattened.
 | `rivers` | `true` | generate natural watercourses |
 | `default-ocean-depth` | `30.0` | depth in metres where the DEM has no bathymetry |
 
+When `data.database-file` exists and contains prepared entries in `water_bodies`, TerraForge loads
+those natural WKB geometries into memory at startup. A missing, empty or unreadable database is
+logged and safely falls back to elevation-derived oceans; it never floods unknown data as water.
+
+Prepare source water data offline with `terraforge prepare-geo --input <directory> --database
+<file>`. Each `.geojson` file must be a GeoJSON `FeatureCollection` of `Polygon` or `MultiPolygon`
+features in WGS84, and every feature must explicitly set `properties.water_type` to `OCEAN`, `LAKE`
+or `RIVER`. Existing water data is protected; pass `--replace-water` only when deliberately
+rebuilding it.
+
 ## `biomes`
 
 | Key | Default | Meaning |
@@ -133,7 +143,21 @@ test-region:
 
 ## Reloading
 
-`/earth reload` (permission `terraforge.command.reload`) re-reads and re-validates the file and
-clears the caches. Options that change world geometry — `scale`, `earth.origin`, `projection`,
-`terrain.*` — apply to newly generated chunks only; existing chunks keep the geometry they were
-generated with. Changing them on a populated world produces visible seams.
+`/earth reload` (permission `terraforge.command.reload`) is a **data** reload, not a generator
+swap. It:
+
+1. re-reads and re-validates `terraforge.yml` — an invalid file is reported and nothing else runs;
+2. clears the caches;
+3. reloads the prepared database (countries, regions, cities) and republishes the BlueMap markers.
+
+Step 3 is safe while players are online because none of it is geometry: it is lookup data that
+`/earth whereami`, `/earth city`, `/earth teleport` and the web map read.
+
+The generator itself is **deliberately not** hot-swapped. `scale`, `earth.origin`, `projection` and
+`terrain.*` keep running with the values the server started with; changing them takes a restart.
+This is not an oversight — a live swap would generate new chunks against a different projection
+than their neighbours, leaving a permanent seam through the world with no way back.
+
+After re-running `prepare-region`, `/earth reload` is enough to pick up new boundaries and cities.
+Towns already annotated keep the country they were resolved against; run `/earth towny refresh` to
+re-resolve them.

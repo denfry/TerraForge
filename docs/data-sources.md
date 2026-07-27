@@ -46,6 +46,50 @@ Land cover is the primary biome signal; elevation, latitude and water state refi
 cropland pixels are mapped to the natural vegetation of their surroundings — a city pixel becomes
 the forest or grassland that would grow there.
 
+Prepare a WGS84 raster offline, then put the compact output in
+`plugins/TerraForge/data/landcover/`. The CLI accepts Arc/Info ASCII Grid (`.asc`) with ESA
+WorldCover codes and writes `.tflc`; use GDAL to convert a GeoTIFF once when needed:
+
+```bash
+gdal_translate -of AAIGrid WorldCover.tif worldcover.asc
+java -jar terraforge-cli.jar prepare-landcover -i worldcover.asc \
+  -o plugins/TerraForge/data/landcover/region.tflc
+```
+
+Existing prepared grids are preserved by default; use `--overwrite` only when intentionally
+replacing a grid.
+
+## Place names
+
+`prepare-cities` reads the standard GeoNames tab-separated export. Besides the primary name it
+stores the ASCII form and up to twelve of GeoNames' alternate names, so `/earth city Munich`,
+`/earth city Muenchen` and `/earth city München` all find the same place, and tab completion
+matches any of them. Where an alternate name is ambiguous, the largest place wins — which is what
+somebody typing it almost always means.
+
+The cap is deliberate: GeoNames carries every localisation of a large city, and a planet-wide import
+of all of them would be millions of rows nobody ever searches.
+
+## Checking a prepared database
+
+Importing validates one feature at a time. Some problems are only visible between features:
+
+```bash
+java -jar terraforge-cli.jar validate -d server/plugins/TerraForge/terraforge.db
+```
+
+It reports counts and geographic coverage, then checks for overlapping country polygons, duplicate
+ISO codes and country names, regions outside their country, countries with no capital or with
+several, and cities assigned to a country they do not lie in.
+
+Errors exit with code 65; warnings alone exit 0 unless `--strict` is given, which makes the command
+usable as a CI gate. Nothing is ever repaired — the fix belongs in the source dataset, where it
+stays fixed.
+
+The importer preserves source pixel order, maps only documented WorldCover codes, and converts
+unknown or no-data pixels to `UNKNOWN`. Prepared grids are immutable and loaded once at startup;
+the server never parses raster files while generating chunks.
+
 | Real-world class | `ClimateBiome` | Minecraft |
 |---|---|---|
 | desert / bare | `DESERT` | Desert |

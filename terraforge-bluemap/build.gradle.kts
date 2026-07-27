@@ -10,5 +10,7 @@ dependencies {
     compileOnly("io.papermc.paper:paper-api:$paperVersion")
     compileOnly("de.bluecolored:bluemap-api:$bluemapApiVersion")
     testCompileOnly("io.papermc.paper:paper-api:$paperVersion")
-    testCompileOnly("de.bluecolored:bluemap-api:$bluemapApiVersion")
+    // On the test runtime path, not just the compile path: the marker-set mapping is exercised
+    // against the real BlueMap marker classes, which are plain POJOs and need no server.
+    testImplementation("de.bluecolored:bluemap-api:$bluemapApiVersion")
 }

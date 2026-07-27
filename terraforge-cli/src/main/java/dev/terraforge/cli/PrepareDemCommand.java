@@ -2,6 +2,7 @@ package dev.terraforge.cli;
 
 import dev.terraforge.cli.dem.DemSource;
 import dev.terraforge.cli.dem.DemTranscoder;
+import dev.terraforge.cli.dem.GeoTiffDemFile;
 import dev.terraforge.cli.dem.HgtDemSource;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -19,10 +20,11 @@ import picocli.CommandLine.Option;
  *
  * <p>Reading heavyweight raster formats happens only here; the server reads the prepared tiles.
  *
- * <p>GeoTIFF input is recognised but not yet transcoded -- the command says so and points at a GDAL
- * one-liner instead of failing silently or, worse, writing partial tiles.
+ * <p>Two input formats: SRTM {@code .hgt}, one file per degree cell, and north-up WGS84 GeoTIFF,
+ * which is sliced into the degree cells it covers. A GeoTIFF that is rotated or projected is
+ * rejected with the GDAL command that fixes it, rather than silently misplaced.
  */
-@Command(name = "prepare-dem", description = "Convert source DEM rasters into .tfdem tiles.")
+@Command(name = "prepare-dem", description = "Convert source DEM rasters (SRTM HGT, GeoTIFF) into .tfdem tiles.")
 public final class PrepareDemCommand implements Callable<Integer> {
 
     @Option(names = {"-i", "--input"}, required = true,
@@ -56,31 +58,27 @@ public final class PrepareDemCommand implements Callable<Integer> {
         }
 
         List<Path> hgtFiles;
-        long geotiffCount;
+        List<Path> geotiffFiles;
         try (Stream<Path> files = Files.walk(input)) {
             List<Path> all = files.filter(Files::isRegularFile).toList();
             hgtFiles = all.stream()
                     .filter(p -> p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".hgt"))
                     .sorted()
                     .toList();
-            geotiffCount = all.stream()
-                    .map(p -> p.getFileName().toString().toLowerCase(Locale.ROOT))
-                    .filter(name -> name.endsWith(".tif") || name.endsWith(".tiff"))
-                    .count();
+            geotiffFiles = all.stream()
+                    .filter(p -> {
+                        String name = p.getFileName().toString().toLowerCase(Locale.ROOT);
+                        return name.endsWith(".tif") || name.endsWith(".tiff");
+                    })
+                    .sorted()
+                    .toList();
         } catch (IOException e) {
             System.err.println("Cannot scan " + input + ": " + e.getMessage());
             return 74; // EX_IOERR
         }
 
-        if (geotiffCount > 0) {
-            System.err.println(geotiffCount
-                    + " GeoTIFF file(s) found and skipped -- GeoTIFF input is not transcoded by this build.");
-            System.err.println("Convert them once with GDAL, then prepare the result:");
-            System.err.println("  gdal_translate -of SRTMHGT input.tif N50E008.hgt");
-        }
-
-        if (hgtFiles.isEmpty()) {
-            System.err.println("No .hgt tiles found under " + input + " -- nothing was written.");
+        if (hgtFiles.isEmpty() && geotiffFiles.isEmpty()) {
+            System.err.println("No .hgt or .tif tiles found under " + input + " -- nothing was written.");
             return 66;
         }
 
@@ -99,6 +97,28 @@ public final class PrepareDemCommand implements Callable<Integer> {
                     written++;
                     System.out.printf(Locale.ROOT, "  %-10s %d x %d, %.2f%% void%n",
                             source.key(), source.width(), source.height(), result.voidPercentage());
+                }
+            } catch (IOException | RuntimeException e) {
+                failures.add(file.getFileName() + ": " + e.getMessage());
+            }
+        }
+
+        // One GeoTIFF covers whatever extent its author chose, so it expands into one tile per
+        // one-degree cell it touches.
+        for (Path file : geotiffFiles) {
+            try (GeoTiffDemFile raster = GeoTiffDemFile.open(file)) {
+                for (var key : raster.tiles()) {
+                    DemSource source = raster.sourceFor(key);
+                    DemTranscoder.Result result = transcoder.transcode(source);
+                    if (result.skipped()) {
+                        skipped++;
+                        System.out.printf(Locale.ROOT, "  %-10s exists, skipped%n", key);
+                    } else {
+                        written++;
+                        System.out.printf(Locale.ROOT, "  %-10s %d x %d, %.2f%% void (from %s)%n",
+                                key, source.width(), source.height(), result.voidPercentage(),
+                                file.getFileName());
+                    }
                 }
             } catch (IOException | RuntimeException e) {
                 failures.add(file.getFileName() + ": " + e.getMessage());

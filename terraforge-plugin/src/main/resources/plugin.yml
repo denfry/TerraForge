@@ -9,12 +9,13 @@ folia-supported: false
 
 softdepend:
   - Towny
+  - NewTowny
   - BlueMap
 
 commands:
   earth:
     description: TerraForge geographic commands.
-    usage: /earth <info|whereami|coords|teleport|country|city|distance|cache|debug|reload>
+    usage: /earth <info|whereami|coords|teleport|country|city|distance|cache|pregenerate|towny|debug|reload>
     aliases: [tf, terraforge]
 
 permissions:
@@ -28,6 +29,7 @@ permissions:
       terraforge.command.debug: true
       terraforge.command.cache: true
       terraforge.command.pregenerate: true
+      terraforge.command.towny: true
       terraforge.command.reload: true
 
   terraforge.command.info:
@@ -47,6 +49,9 @@ permissions:
     default: op
   terraforge.command.pregenerate:
     description: Start region pregeneration.
+    default: op
+  terraforge.command.towny:
+    description: Re-annotate existing Towny towns with geography.
     default: op
   terraforge.command.reload:
     description: Reload terraforge.yml.

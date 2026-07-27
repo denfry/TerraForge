@@ -45,16 +45,33 @@ java -jar terraforge-cli/build/libs/terraforge-cli-*.jar prepare-region \
     -o ./server/plugins/TerraForge
 ```
 
+`prepare-region` expects one directory per dataset under `-i`. A missing directory means "no such
+data yet": it is reported and skipped, not treated as an error.
+
+```
+source-data/
+├── dem/         *.hgt      SRTM tiles
+├── landcover/   *.asc      Arc/Info ASCII grids
+├── boundaries/  *.geojson  countries and first-level regions
+├── cities/      *.txt      GeoNames tab-separated export
+└── water/       *.geojson  natural water polygons
+```
+
+Everything is clipped to the bounding box, so a planet-wide gazetteer produces a regional database.
+Boundaries are imported before cities, because a city resolves its country by ISO code as it is
+inserted; the whole vector import runs in one transaction, so a broken source file leaves the
+database exactly as it was. Re-running the command refuses to overwrite prepared data unless you
+pass `--replace`.
+
 Resulting layout:
 
 ```
 plugins/TerraForge/
 ├── terraforge.yml
-├── terraforge.db
+├── terraforge.db    countries, regions, cities, water bodies
 ├── data/
 │   ├── dem/         N47E005.tfdem, ...
-│   ├── landcover/
-│   └── water/
+│   └── landcover/   *.tflc
 └── cache/
 ```
 
@@ -87,8 +104,17 @@ The world name must match `world.name` in `terraforge.yml`.
 ```
 /earth info        server-wide configuration
 /earth whereami    your country, region, nearest city, lat/lon, elevation
-/earth teleport 50.110644 8.682092
+/earth teleport city Frankfurt
+/earth teleport country DE
 ```
+
+Country and city names complete with <kbd>Tab</kbd>, as do the subcommands of `teleport`,
+`pregenerate`, `towny`, `cache` and `debug`. Names containing a space are not offered — Bukkit
+splits arguments on spaces — but typing them out still works.
+
+While debugging terrain, `/earth debug` prints a one-off report for the block you are standing on
+and `/earth debug overlay` follows you in the action bar. The overlay needs both `debug.enabled` and
+`debug.per-player` in `terraforge.yml`; the repeating task exists only while somebody has it on.
 
 ## 5. Optional integrations
 

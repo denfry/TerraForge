@@ -42,14 +42,21 @@ public final class TerrainStack {
     /**
      * Builds the stack.
      *
-     * <p>Water and land cover default to the elevation-derived fallbacks until Phase 6 imports the
-     * real datasets; passing real providers here is the only change that will need.
+     * <p>This convenience overload uses documented fallbacks. The overload taking water and
+     * land-cover providers is used once prepared Phase 6 data is available.
      */
     public static TerrainStack create(TerraForgeConfig config, CoordinateTransformer transformer,
+                                       VerticalScale verticalScale, ElevationProvider elevation,
+                                       CacheManager cacheManager) {
+        return create(config, transformer, verticalScale, elevation, cacheManager,
+                new SeaLevelWaterProvider(elevation), ConstantLandcoverProvider.unknown());
+    }
+
+    /** Builds the stack with prepared Phase 6 providers, or documented fallbacks supplied by caller. */
+    public static TerrainStack create(TerraForgeConfig config, CoordinateTransformer transformer,
                                       VerticalScale verticalScale, ElevationProvider elevation,
-                                      CacheManager cacheManager) {
-        WaterProvider water = new SeaLevelWaterProvider(elevation);
-        LandcoverProvider landcover = ConstantLandcoverProvider.unknown();
+                                      CacheManager cacheManager, WaterProvider water,
+                                      LandcoverProvider landcover) {
 
         var samplerHolder = new java.util.concurrent.atomic.AtomicReference<CachingChunkSampler>();
         DefaultTerrainPipeline pipeline = DefaultTerrainPipeline.builder()
