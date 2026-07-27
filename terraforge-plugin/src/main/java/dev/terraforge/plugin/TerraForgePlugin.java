@@ -7,6 +7,8 @@ import dev.terraforge.core.coord.CoordinateTransformer;
 import dev.terraforge.core.projection.Projection;
 import dev.terraforge.core.projection.ProjectionRegistry;
 import dev.terraforge.core.terrain.VerticalScale;
+import dev.terraforge.geo.dem.DemElevationProvider;
+import dev.terraforge.geo.dem.FileDemReader;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -28,6 +30,8 @@ public final class TerraForgePlugin extends JavaPlugin {
     private CoordinateTransformer transformer;
     private VerticalScale verticalScale;
     private CacheManager cacheManager;
+    private FileDemReader demReader;
+    private DemElevationProvider elevation;
     private IntegrationStatus integrations;
 
     @Override
@@ -53,6 +57,21 @@ public final class TerraForgePlugin extends JavaPlugin {
                 config.terrain().verticalExaggeration(),
                 config.terrain().metersPerBlock());
         this.cacheManager = new CacheManager(config.cache().memoryLimitMb());
+
+        // A world with no prepared DEM still starts: every column falls back to
+        // terrain.fallback-elevation, which is flat but honest, and the operator sees why below.
+        Path demDirectory = getDataFolder().toPath()
+                .resolve(config.data().dataDirectory())
+                .resolve("dem");
+        try {
+            this.demReader = FileDemReader.open(demDirectory);
+        } catch (IOException e) {
+            getLogger().severe(LOG_PREFIX + "Cannot read DEM directory " + demDirectory + ": " + e.getMessage());
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
+        this.elevation = new DemElevationProvider(demReader, cacheManager, config.cache().demTileCacheEntries());
+
         this.integrations = IntegrationStatus.detect(getServer().getPluginManager(), config);
 
         printBanner();
@@ -62,6 +81,9 @@ public final class TerraForgePlugin extends JavaPlugin {
     public void onDisable() {
         if (cacheManager != null) {
             cacheManager.invalidateAll();
+        }
+        if (demReader != null) {
+            demReader.close();
         }
         getLogger().info(LOG_PREFIX + "Disabled.");
     }
@@ -89,10 +111,25 @@ public final class TerraForgePlugin extends JavaPlugin {
                 + ", exaggeration " + verticalScale.verticalExaggeration()
                 + ", " + verticalScale.metersPerBlock() + " m/block");
         getLogger().info("Test region:  " + config.testRegion().name() + " " + config.testRegion().toBounds());
+        getLogger().info("DEM:          " + demSummary());
         getLogger().info("Towny:        " + integrations.townyStatus());
         getLogger().info("BlueMap:      " + integrations.blueMapStatus());
         getLogger().info("Natural-only: " + (config.generation().naturalOnly() ? "ENABLED" : "DISABLED"));
         getLogger().info(line);
+    }
+
+    private String demSummary() {
+        int tiles = 0;
+        for (var ignored : demReader.availableTiles()) {
+            tiles++;
+        }
+        if (tiles == 0) {
+            return "no prepared tiles in " + demReader.directory()
+                    + " -- terrain will be flat at " + config.terrain().fallbackElevation() + " m "
+                    + "(run 'terraforge prepare-dem', see docs/dem.md)";
+        }
+        return tiles + " tiles " + elevation.coverage()
+                + (elevation.hasBathymetry() ? ", with bathymetry" : ", land only");
     }
 
     // --- accessors used by the command and integration layers ---------------
@@ -111,6 +148,11 @@ public final class TerraForgePlugin extends JavaPlugin {
 
     public CacheManager cacheManager() {
         return cacheManager;
+    }
+
+    /** Real elevation, straight from the prepared DEM tiles. */
+    public DemElevationProvider elevation() {
+        return elevation;
     }
 
     public IntegrationStatus integrations() {

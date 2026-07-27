@@ -21,6 +21,27 @@ public record DemTileKey(int latDegree, int lonDegree) {
         return new GeoBounds(latDegree, lonDegree, latDegree + 1.0, lonDegree + 1.0);
     }
 
+    /**
+     * Reverses {@link #fileName()}: accepts {@code N50E008} with or without the extension.
+     *
+     * @throws IllegalArgumentException when the name does not follow the convention
+     */
+    public static DemTileKey parse(String name) {
+        String stem = name.endsWith(".tfdem") ? name.substring(0, name.length() - ".tfdem".length()) : name;
+        var matcher = NAME_PATTERN.matcher(stem);
+        if (!matcher.matches()) {
+            throw new IllegalArgumentException("Not a DEM tile name: " + name);
+        }
+        int latitude = Integer.parseInt(matcher.group(2));
+        int longitude = Integer.parseInt(matcher.group(4));
+        return new DemTileKey(
+                matcher.group(1).equalsIgnoreCase("S") ? -latitude : latitude,
+                matcher.group(3).equalsIgnoreCase("W") ? -longitude : longitude);
+    }
+
+    private static final java.util.regex.Pattern NAME_PATTERN =
+            java.util.regex.Pattern.compile("([NnSs])(\\d{2})([EeWw])(\\d{3})");
+
     /** File name convention: {@code N50E008.tfdem}, matching the SRTM naming scheme. */
     public String fileName() {
         return String.format(java.util.Locale.ROOT, "%s%02d%s%03d.tfdem",

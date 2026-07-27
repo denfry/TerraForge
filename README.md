@@ -33,21 +33,22 @@ a man-made structure.
 
 ## Status
 
-This repository is at **Phase 1–3 of the roadmap**: the architecture, build and coordinate system
-are in place and tested; terrain generation itself is being built on top of them.
+This repository is at **Phase 4 of the roadmap**: the coordinate system and the DEM layer are in
+place and tested — real elevation can be prepared offline and sampled at runtime. Terrain generation
+itself is being built on top of them.
 
 | Phase | Scope | State |
 |---|---|---|
 | 1 | Gradle multi-module project | done |
 | 2 | Earth coordinate system | done — `GeoPoint`, `EarthLocation`, `CoordinateTransformer` |
 | 3 | Projections | done — Web Mercator, equirectangular, registry |
-| 4 | DEM provider | contracts defined (`DemTile`, `DemReader`, `.tfdem` format) |
+| 4 | DEM provider | done — `.tfdem` writer/reader, memory-mapped tiles, `DemElevationProvider`; source input is SRTM HGT (GeoTIFF via GDAL for now) |
 | 5 | Terrain generator | contracts defined (`TerrainPipeline`, `ChunkSampler`) |
 | 6 | Water / biome system | contracts defined (`WaterProvider`, `BiomeProvider`, `ClimateBiome`) |
 | 7 | Geographic database | schema written (`schema.sql`) |
 | 8 | Country / region detection | contracts defined (`GeoService`, `SpatialIndex`) |
 | 9 | Commands | permissions and command surface declared in `plugin.yml` |
-| 10 | Caching | `CacheManager`, `CacheStatistics` in place |
+| 10 | Caching | done — `CacheManager`, byte-bounded tile cache, `CacheStatistics` |
 | 11–17 | Pregeneration, Towny, BlueMap, CLI, tests, benchmarks, docs | in progress |
 
 CLI subcommands that are not implemented yet say so explicitly and write nothing.
