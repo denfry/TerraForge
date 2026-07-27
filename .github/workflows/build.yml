@@ -22,12 +22,12 @@ jobs:
           cache-read-only: ${{ github.event_name == 'pull_request' }}
       - name: Build and test
         run: ./gradlew build --no-daemon
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: terraforge-plugin-${{ github.sha }}
           path: terraforge-plugin/build/libs/TerraForge-*.jar
           if-no-files-found: error
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: terraforge-cli-${{ github.sha }}
           path: terraforge-cli/build/libs/terraforge-cli-*.jar
