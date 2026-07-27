@@ -9,6 +9,7 @@ import dev.terraforge.core.projection.ProjectionRegistry;
 import dev.terraforge.core.terrain.VerticalScale;
 import dev.terraforge.geo.dem.DemElevationProvider;
 import dev.terraforge.geo.dem.FileDemReader;
+import dev.terraforge.generator.TerrainStack;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -32,6 +33,7 @@ public final class TerraForgePlugin extends JavaPlugin {
     private CacheManager cacheManager;
     private FileDemReader demReader;
     private DemElevationProvider elevation;
+    private TerrainStack terrain;
     private IntegrationStatus integrations;
 
     @Override
@@ -72,6 +74,7 @@ public final class TerraForgePlugin extends JavaPlugin {
         }
         this.elevation = new DemElevationProvider(demReader, cacheManager, config.cache().demTileCacheEntries());
 
+        this.terrain = TerrainStack.create(config, transformer, verticalScale, elevation, cacheManager);
         this.integrations = IntegrationStatus.detect(getServer().getPluginManager(), config);
 
         printBanner();
@@ -118,6 +121,16 @@ public final class TerraForgePlugin extends JavaPlugin {
         getLogger().info(line);
     }
 
+    /**
+     * Paper asks for the generator when a world declares {@code generator: TerraForge}. The world
+     * name is ignored on purpose: every TerraForge world is the same planet, and which part of it a
+     * world shows is decided by the projection and origin, not by its name.
+     */
+    @Override
+    public org.bukkit.generator.ChunkGenerator getDefaultWorldGenerator(String worldName, String id) {
+        return terrain.chunkGenerator();
+    }
+
     private String demSummary() {
         int tiles = 0;
         for (var ignored : demReader.availableTiles()) {
@@ -148,6 +161,11 @@ public final class TerraForgePlugin extends JavaPlugin {
 
     public CacheManager cacheManager() {
         return cacheManager;
+    }
+
+    /** The terrain pipeline and its chunk sampler. */
+    public TerrainStack terrain() {
+        return terrain;
     }
 
     /** Real elevation, straight from the prepared DEM tiles. */

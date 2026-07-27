@@ -33,9 +33,10 @@ a man-made structure.
 
 ## Status
 
-This repository is at **Phase 4 of the roadmap**: the coordinate system and the DEM layer are in
-place and tested — real elevation can be prepared offline and sampled at runtime. Terrain generation
-itself is being built on top of them.
+This repository is at **Phase 5 of the roadmap**: real elevation is prepared offline, sampled at
+runtime and turned into Minecraft terrain — a world generated now has the real relief, coastlines
+and ocean floor of the Earth. Water and biomes still come from elevation and latitude rather than
+from vector datasets; that is Phase 6.
 
 | Phase | Scope | State |
 |---|---|---|
@@ -43,8 +44,8 @@ itself is being built on top of them.
 | 2 | Earth coordinate system | done — `GeoPoint`, `EarthLocation`, `CoordinateTransformer` |
 | 3 | Projections | done — Web Mercator, equirectangular, registry |
 | 4 | DEM provider | done — `.tfdem` writer/reader, memory-mapped tiles, `DemElevationProvider`; source input is SRTM HGT (GeoTIFF via GDAL for now) |
-| 5 | Terrain generator | contracts defined (`TerrainPipeline`, `ChunkSampler`) |
-| 6 | Water / biome system | contracts defined (`WaterProvider`, `BiomeProvider`, `ClimateBiome`) |
+| 5 | Terrain generator | done — `DefaultTerrainPipeline`, `CachingChunkSampler`, Paper `ChunkGenerator`, surface palette |
+| 6 | Water / biome system | partial — `ClimateBiomeResolver` and the Minecraft mapping are done; water and land cover still derive from elevation (`SeaLevelWaterProvider`) until vector data is imported |
 | 7 | Geographic database | schema written (`schema.sql`) |
 | 8 | Country / region detection | contracts defined (`GeoService`, `SpatialIndex`) |
 | 9 | Commands | permissions and command surface declared in `plugin.yml` |
