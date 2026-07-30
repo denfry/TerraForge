@@ -17,6 +17,8 @@ dependencies {
     implementation(project(":terraforge-towny"))
     implementation(project(":terraforge-bluemap"))
 
+    implementation("org.bstats:bstats-bukkit:3.0.2")
+
     compileOnly("io.papermc.paper:paper-api:$paperVersion")
     testCompileOnly("io.papermc.paper:paper-api:$paperVersion")
 }
@@ -46,6 +48,7 @@ tasks.shadowJar {
         "com.zaxxer.hikari" to "hikari",
         "org.yaml.snakeyaml" to "snakeyaml",
         "org.sqlite" to "sqlite",
+        "org.bstats" to "bstats",
     ).forEach { (pkg, alias) -> relocate(pkg, "dev.terraforge.libs.$alias") }
 
     // Service files are merged by the transformer, so duplicates must reach it.

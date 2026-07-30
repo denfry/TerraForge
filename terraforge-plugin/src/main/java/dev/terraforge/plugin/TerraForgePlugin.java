@@ -27,6 +27,8 @@ import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import org.bstats.bukkit.Metrics;
+import org.bstats.charts.SimplePie;
 import org.bukkit.plugin.java.JavaPlugin;
 
 /**
@@ -40,6 +42,8 @@ import org.bukkit.plugin.java.JavaPlugin;
 public final class TerraForgePlugin extends JavaPlugin {
 
     private static final String LOG_PREFIX = "[TerraForge] ";
+    // Registered at https://bstats.org/plugin/bukkit/TerraForge -- replace before release.
+    private static final int BSTATS_PLUGIN_ID = 33013;
 
     private TerraForgeConfig config;
     private CoordinateTransformer transformer;
@@ -72,6 +76,7 @@ public final class TerraForgePlugin extends JavaPlugin {
         initializeMarkers();
         initializeTownyIntegration();
         initializeBlueMapIntegration();
+        initializeMetrics();
         var earthCommand = getCommand("earth");
         if (earthCommand == null) {
             throw new IllegalStateException("plugin.yml is missing the earth command");
@@ -273,6 +278,19 @@ public final class TerraForgePlugin extends JavaPlugin {
                         bluemapConfig != null && bluemapConfig.cityMarkers(),
                         bluemapConfig != null && bluemapConfig.countryLabels()));
         getLogger().info(LOG_PREFIX + "Markers: published " + published + " geographic markers.");
+    }
+
+    /**
+     * bStats respects the server operator's own opt-out in {@code plugins/bStats/config.yml}; no
+     * TerraForge-side toggle is needed.
+     */
+    private void initializeMetrics() {
+        Metrics metrics = new Metrics(this, BSTATS_PLUGIN_ID);
+        metrics.addCustomChart(new SimplePie("projection", () -> config.earth().projection()));
+        metrics.addCustomChart(new SimplePie("towny_integration",
+                () -> integrations.townyAvailable() ? "enabled" : "disabled"));
+        metrics.addCustomChart(new SimplePie("bluemap_integration",
+                () -> integrations.blueMapAvailable() ? "enabled" : "disabled"));
     }
 
     private void initializeBlueMapIntegration() {
