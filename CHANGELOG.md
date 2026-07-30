@@ -9,6 +9,8 @@ format. Both are stated explicitly per release, because either one means regener
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-07-29
+
 ### Changed
 
 - Reworked the public README with a project banner, compatibility matrix, quick start, command
@@ -19,6 +21,13 @@ format. Both are stated explicitly per release, because either one means regener
   validation, concurrency limits, exact artifact selection and SHA-256 release checksums.
 - Made every Gradle archive reproducible, added implementation metadata to jar manifests and
   embedded the TerraForge licence in distributable jars.
+- Added tag-driven Modrinth publishing for the Paper plugin.
+
+### Fixed
+
+- Fail closed when the prepared DEM directory cannot be opened instead of continuing with a
+  partially initialized plugin.
+- Reject configured data paths that escape the TerraForge plugin directory.
 
 ## [0.1.0] - 2026-07-27
 
@@ -71,5 +80,6 @@ and land cover of the Earth, and nothing man-made.
 - `pregenerate` — plans a chunk set and checks DEM coverage without writing anything.
 - `info` — what the configured world will look like.
 
-[Unreleased]: https://github.com/denfry/TerraForge/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/denfry/TerraForge/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/denfry/TerraForge/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/denfry/TerraForge/releases/tag/v0.1.0

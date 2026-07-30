@@ -113,9 +113,7 @@ public final class TerraForgePlugin extends JavaPlugin {
         try {
             this.demReader = FileDemReader.open(demDirectory);
         } catch (IOException e) {
-            getLogger().severe(LOG_PREFIX + "Cannot read DEM directory " + demDirectory + ": " + e.getMessage());
-            getServer().getPluginManager().disablePlugin(this);
-            return;
+            throw new IOException("Cannot read DEM directory " + demDirectory + ": " + e.getMessage(), e);
         }
         this.elevation = new DemElevationProvider(demReader, cacheManager, config.cache().demTileCacheEntries());
 

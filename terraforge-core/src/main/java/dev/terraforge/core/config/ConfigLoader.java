@@ -7,6 +7,7 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 
 /**
@@ -80,6 +81,12 @@ public final class ConfigLoader {
                 "cache.memory-limit-mb must be greater than 0");
         require(config.cache().demTileCacheEntries() > 0, "cache.dem-tile-cache-entries must be greater than 0");
 
+        TerraForgeConfig.DataSection data = config.data();
+        require(data != null, "data section must be present");
+        requireRelativePath(data.dataDirectory(), "data.data-directory");
+        requireRelativePath(data.cacheDirectory(), "data.cache-directory");
+        requireRelativePath(data.databaseFile(), "data.database-file");
+
         // Infrastructure generation is not implemented by design; refuse to pretend otherwise.
         if (config.infrastructure() != null && config.infrastructure().anyEnabled()) {
             throw new ConfigException("infrastructure.* must all be false -- TerraForge generates "
@@ -94,6 +101,17 @@ public final class ConfigLoader {
                     "test-region.longitude-min must be below test-region.longitude-max");
         }
         return config;
+    }
+
+    private static void requireRelativePath(String value, String setting) {
+        require(value != null && !value.isBlank(), setting + " must be set");
+        try {
+            Path path = Path.of(value).normalize();
+            require(!path.isAbsolute() && !path.startsWith(".."),
+                    setting + " must stay inside the TerraForge plugin directory");
+        } catch (InvalidPathException exception) {
+            throw new ConfigException(setting + " is not a valid path");
+        }
     }
 
     private static void require(boolean condition, String message) {

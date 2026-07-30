@@ -1,5 +1,6 @@
 plugins {
     id("com.gradleup.shadow") version "9.6.1" apply false
+    id("com.modrinth.minotaur") version "2.9.0" apply false
 }
 
 val javaVersion = providers.gradleProperty("java_version").get()

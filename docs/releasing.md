@@ -1,7 +1,18 @@
 # Releasing TerraForge
 
 TerraForge releases are immutable, tag-driven GitHub releases containing the Paper plugin, offline
-CLI and SHA-256 checksums.
+CLI and SHA-256 checksums. The same tag publishes the Paper plugin to Modrinth.
+
+## One-time Modrinth setup
+
+1. Create the TerraForge project on Modrinth and submit its project page for review.
+2. Create a Modrinth personal access token with the `CREATE_VERSION` scope.
+3. Add these GitHub Actions repository secrets:
+   - `MODRINTH_TOKEN` — the personal access token; never commit it.
+   - `MODRINTH_PROJECT_ID` — the immutable Modrinth project ID.
+
+The release workflow uploads only `TerraForge-<version>.jar`. The CLI remains attached to the
+GitHub release because it is an operator tool, not a server plugin.
 
 ## Versioning
 
@@ -36,7 +47,8 @@ The Git tag is `v<version>` and must exactly match `version` in `gradle.properti
    ```
 
 8. Push the commit and tag. The release workflow validates the version, rebuilds from the tag,
-   extracts release notes from `CHANGELOG.md`, creates checksums and publishes the artifacts.
+   extracts release notes from `CHANGELOG.md`, publishes the plugin to Modrinth, creates checksums
+   and publishes the GitHub release artifacts.
 9. Download the published jars and verify their checksums.
 10. Smoke-test the release on a clean Paper server before announcing it.
 

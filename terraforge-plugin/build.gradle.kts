@@ -2,6 +2,7 @@
 
 plugins {
     id("com.gradleup.shadow")
+    id("com.modrinth.minotaur")
 }
 
 description = "TerraForge Plugin -- Paper bootstrap, commands, events, service wiring"
@@ -64,4 +65,23 @@ tasks.shadowJar {
 
 tasks.named("build") {
     dependsOn(tasks.shadowJar)
+}
+
+modrinth {
+    token.set(providers.environmentVariable("MODRINTH_TOKEN"))
+    projectId.set(providers.environmentVariable("MODRINTH_PROJECT_ID"))
+    versionNumber.set(project.version.toString())
+    versionName.set("TerraForge ${project.version}")
+    versionType.set(if (project.version.toString().contains('-')) "beta" else "release")
+    uploadFile.set(tasks.shadowJar)
+    gameVersions.add(minecraftVersion)
+    loaders.add("paper")
+    changelog.set(providers.provider {
+        val header = "## [${project.version}]"
+        val source = rootProject.file("CHANGELOG.md").readText()
+        require(source.contains(header)) {
+            "CHANGELOG.md has no release section for ${project.version}"
+        }
+        source.substringAfter(header).substringBefore("\n## [").trim()
+    })
 }

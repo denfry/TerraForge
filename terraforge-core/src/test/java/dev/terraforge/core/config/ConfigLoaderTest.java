@@ -86,6 +86,31 @@ class ConfigLoaderTest {
     }
 
     @Test
+    @DisplayName("data paths cannot escape the TerraForge plugin directory")
+    void parentDataPathIsRejected() {
+        TerraForgeConfig defaults = TerraForgeConfig.defaults();
+        TerraForgeConfig broken = withData(new TerraForgeConfig.DataSection(
+                "../shared-data", defaults.data().cacheDirectory(), defaults.data().databaseFile()));
+
+        assertThatThrownBy(() -> loader.validate(broken))
+                .isInstanceOf(ConfigLoader.ConfigException.class)
+                .hasMessageContaining("data.data-directory")
+                .hasMessageContaining("inside the TerraForge plugin directory");
+    }
+
+    @Test
+    @DisplayName("every configured data path must be present")
+    void blankDatabasePathIsRejected() {
+        TerraForgeConfig defaults = TerraForgeConfig.defaults();
+        TerraForgeConfig broken = withData(new TerraForgeConfig.DataSection(
+                defaults.data().dataDirectory(), defaults.data().cacheDirectory(), " "));
+
+        assertThatThrownBy(() -> loader.validate(broken))
+                .isInstanceOf(ConfigLoader.ConfigException.class)
+                .hasMessageContaining("data.database-file must be set");
+    }
+
+    @Test
     @DisplayName("unknown keys are ignored so older configs keep working")
     void unknownKeysAreIgnored() throws IOException {
         String yaml = """
@@ -105,5 +130,12 @@ class ConfigLoaderTest {
         return new TerraForgeConfig(d.world(), d.scale(), d.earth(), d.terrain(), d.water(), d.biomes(),
                 d.vegetation(), d.generation(), section, d.data(), d.cache(), d.towny(), d.bluemap(),
                 d.debug(), d.testRegion());
+    }
+
+    private static TerraForgeConfig withData(TerraForgeConfig.DataSection section) {
+        TerraForgeConfig d = TerraForgeConfig.defaults();
+        return new TerraForgeConfig(d.world(), d.scale(), d.earth(), d.terrain(), d.water(), d.biomes(),
+                d.vegetation(), d.generation(), d.infrastructure(), section, d.cache(), d.towny(),
+                d.bluemap(), d.debug(), d.testRegion());
     }
 }
