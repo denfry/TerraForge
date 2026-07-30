@@ -82,6 +82,9 @@ jobs:
           fi
 
       - name: Publish plugin to Modrinth
+        # Soft-fails until MODRINTH_TOKEN/MODRINTH_PROJECT_ID are configured, so a missing
+        # one-time setup does not block the GitHub release below.
+        continue-on-error: true
         run: ./gradlew :terraforge-plugin:modrinth --no-daemon --stacktrace
         env:
           MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
