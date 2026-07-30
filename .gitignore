@@ -33,6 +33,7 @@ Desktop.ini
 *.tif
 *.tiff
 *.hgt
+*.asc
 *.geojson
 *.shp
 *.dbf

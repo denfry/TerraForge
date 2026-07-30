@@ -12,6 +12,8 @@
   <a href="https://github.com/denfry/TerraForge/actions/workflows/build.yml"><img alt="Build" src="https://github.com/denfry/TerraForge/actions/workflows/build.yml/badge.svg"></a>
   <a href="https://github.com/denfry/TerraForge/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/denfry/TerraForge?include_prereleases&sort=semver"></a>
   <a href="https://github.com/denfry/TerraForge/blob/main/LICENSE"><img alt="MIT License" src="https://img.shields.io/github/license/denfry/TerraForge"></a>
+  <a href="https://github.com/denfry/TerraForge/wiki"><img alt="Wiki" src="https://img.shields.io/badge/docs-wiki-blue"></a>
+  <a href="https://github.com/denfry/TerraForge/discussions"><img alt="Discussions" src="https://img.shields.io/badge/chat-discussions-blueviolet"></a>
   <img alt="Paper 1.21.8" src="https://img.shields.io/badge/Paper-1.21.8-222?logo=papermc">
   <img alt="Java 21" src="https://img.shields.io/badge/Java-21-ED8B00?logo=openjdk">
 </p>
@@ -151,6 +153,10 @@ The Gradle wrapper is the supported build entry point. A clean `build` compiles 
 runs all unit and integration tests.
 
 ## Documentation
+
+The [wiki](https://github.com/denfry/TerraForge/wiki) is the player- and operator-facing home for
+installation, configuration, commands and troubleshooting. The tables below link the same
+material inside this repository for contributors browsing the source.
 
 | Guide | Contents |
 |---|---|

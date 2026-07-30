@@ -1,13 +1,15 @@
 # TerraForge support
 
-TerraForge is community-maintained preview software. Public support is provided through GitHub
-issues; there is no guaranteed response time.
+TerraForge is community-maintained preview software. Public support is provided through the
+[wiki](https://github.com/denfry/TerraForge/wiki), [Discussions](https://github.com/denfry/TerraForge/discussions)
+and GitHub issues; there is no guaranteed response time.
 
 ## Before opening an issue
 
 1. Confirm you are using the Paper, Java and TerraForge versions listed in the README.
-2. Read the [installation guide](docs/installation.md) and
-   [troubleshooting guide](docs/troubleshooting.md).
+2. Read the [Installation](https://github.com/denfry/TerraForge/wiki/Installation) and
+   [Troubleshooting](https://github.com/denfry/TerraForge/wiki/Troubleshooting) wiki pages, and the
+   [FAQ](https://github.com/denfry/TerraForge/wiki/FAQ).
 3. Run the CLI validator against prepared data:
 
    ```bash
@@ -23,6 +25,8 @@ issues; there is no guaranteed response time.
 
 - Reproducible defect: open a bug report.
 - Proposed behavior: open a feature request.
+- General question, "how do I...", or showing off a world: use
+  [Discussions](https://github.com/denfry/TerraForge/discussions) instead of an issue.
 - Security vulnerability: use the private process in [SECURITY.md](SECURITY.md).
 - General Paper, Towny, BlueMap or dataset licensing questions: use the upstream project's support
   channel when the issue is not specific to TerraForge.
