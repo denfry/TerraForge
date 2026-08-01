@@ -59,6 +59,22 @@ public final class IndexedWaterProvider implements WaterProvider {
         return waterTypeAt(latitude, longitude).isWater() ? 0.0 : ElevationProvider.NO_DATA;
     }
 
+    @Override
+    public double waterSurfaceElevation(double latitude, double longitude, double knownElevationMeters) {
+        return waterTypeAt(latitude, longitude) == WaterType.RIVER ? knownElevationMeters
+                : waterSurfaceElevation(latitude, longitude);
+    }
+
+    @Override
+    public double riverBedDepthMeters(double latitude, double longitude, double knownElevationMeters) {
+        Point point = GEOMETRY_FACTORY.createPoint(new org.locationtech.jts.geom.Coordinate(longitude, latitude));
+        @SuppressWarnings("unchecked")
+        List<IndexedFeature> candidates = index.query(new Envelope(longitude, longitude, latitude, latitude));
+        return candidates.stream().filter(candidate -> candidate.geometry().covers(point))
+                .map(IndexedFeature::feature).filter(feature -> feature.type() == WaterType.RIVER)
+                .mapToDouble(WaterFeature::riverBedDepthMetres).max().orElse(0.0);
+    }
+
     private static int priority(WaterType type) {
         return switch (type) {
             case RIVER -> 3;
@@ -75,13 +91,20 @@ public final class IndexedWaterProvider implements WaterProvider {
     }
 
     /** One vetted natural water geometry. Man-made data is rejected by the offline importer. */
-    public record WaterFeature(WaterType type, Geometry geometry) {
+    public record WaterFeature(WaterType type, Geometry geometry, double riverBedDepthMetres) {
         public WaterFeature {
             Objects.requireNonNull(type, "type");
             Objects.requireNonNull(geometry, "geometry");
             if (type == WaterType.NONE) {
                 throw new IllegalArgumentException("Water features must have a water type");
             }
+            if (!Double.isFinite(riverBedDepthMetres) || riverBedDepthMetres < 0.0) {
+                throw new IllegalArgumentException("River bed depth must be finite and non-negative");
+            }
+        }
+
+        public WaterFeature(WaterType type, Geometry geometry) {
+            this(type, geometry, 0.0);
         }
     }
 }

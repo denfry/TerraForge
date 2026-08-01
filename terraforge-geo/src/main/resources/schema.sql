@@ -78,10 +78,24 @@ CREATE TABLE IF NOT EXISTS water_bodies (
     min_lon     REAL    NOT NULL,
     max_lat     REAL    NOT NULL,
     max_lon     REAL    NOT NULL,
+    river_bed_depth_m REAL NOT NULL DEFAULT 0,
     geometry    BLOB    NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_water_bbox ON water_bodies (min_lat, max_lat, min_lon, max_lon);
 CREATE INDEX IF NOT EXISTS idx_water_type ON water_bodies (water_type);
+
+-- WOKAM identifies soluble-rock areas where caves can form. It is not 3D cave geometry.
+CREATE TABLE IF NOT EXISTS karst_areas (
+    id INTEGER PRIMARY KEY, min_lat REAL NOT NULL, min_lon REAL NOT NULL,
+    max_lat REAL NOT NULL, max_lon REAL NOT NULL, geometry BLOB NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_karst_bbox ON karst_areas (min_lat, max_lat, min_lon, max_lon);
+
+-- OSM natural=cave_entrance only. These are real entrances, not surveyed passage geometry.
+CREATE TABLE IF NOT EXISTS cave_entrances (
+    id INTEGER PRIMARY KEY, latitude REAL NOT NULL, longitude REAL NOT NULL, name TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_cave_entrance_position ON cave_entrances (latitude, longitude);
 
 -- Inventory of prepared raster tiles, so the plugin can report coverage gaps
 -- at startup instead of discovering them mid-generation.

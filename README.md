@@ -39,7 +39,7 @@ REAL EARTH DATA → TerraForge CLI → natural Minecraft terrain → players bui
 - **Deterministic generation** — the same configuration and source data produce the same world.
 - **Conservative fallbacks** — missing coverage degrades visibly and safely instead of inventing data.
 - **Optional integrations** — Towny/NewTowny and BlueMap are detected at runtime.
-- **Operator tooling** — an offline CLI prepares, validates and inspects regional datasets.
+- **One-command setup** — the CLI downloads, prepares, configures and validates a region for you.
 
 | Generated from real data | Never generated |
 |---|---|
@@ -48,8 +48,10 @@ REAL EARTH DATA → TerraForge CLI → natural Minecraft terrain → players bui
 | Mountains, valleys, plains and deserts | Railways, bridges and airports |
 | Biomes from real land cover | Power lines or industrial areas |
 
-`generation.natural-only: true` is the default. TerraForge fails closed if an infrastructure switch
-is enabled, and the generator contains no code path that places man-made structures.
+`generation.caves` and `generation.man-made-structures` are both off by default. Caves are
+generated geometry constrained by WOKAM karst polygons and may be anchored at real OSM cave
+entrances; they are not surveyed 3D cave geometry. Man-made vanilla structures remain disabled
+unless an operator explicitly opts in.
 
 ## Requirements
 
@@ -68,14 +70,19 @@ work, but the public compatibility target is Paper.
 1. Download the plugin and CLI jars from the
    [latest GitHub release](https://github.com/denfry/TerraForge/releases/latest).
 2. Put `TerraForge-<version>.jar` in the server's `plugins/` directory and start the server once.
-3. Prepare a bounded test region offline:
+3. Let the CLI build a bounded region — it downloads the source data, prepares it, writes a matching
+   `terraforge.yml` and validates the result:
 
 ```bash
-java -jar terraforge-cli-<version>.jar prepare-region \
+java -jar terraforge-cli-<version>.jar setup \
     --lat-min 47.0 --lat-max 55.5 --lon-min 5.0 --lon-max 15.5 \
-    -i ./source-data \
     -o ./server/plugins/TerraForge
 ```
+
+Add `--dry-run` first to see how much it will download. The sources are cached in `./source-data`,
+so re-running fetches only what is missing. Every dataset is free to use and requires attribution,
+which the command prints when it finishes; if you already have data, `prepare-region` still takes a
+source tree you assembled yourself.
 
 4. Register the generator in `bukkit.yml`:
 
@@ -92,13 +99,29 @@ worlds:
 /earth whereami
 ```
 
-TerraForge does not bundle or download geodata. The complete workflow, expected source layout and
-world-creation options are documented in the
+TerraForge bundles no geodata, and the running server never downloads any: `setup` fetches the
+sources offline, on your machine, when you ask it to. The complete workflow, expected source layout
+and world-creation options are documented in the
 [installation guide](docs/installation.md) and [data-source guide](DATA_SOURCES.md).
 
 ## Commands
 
 The root command is `/earth`; `/tf` and `/terraforge` are aliases.
+
+### CLI commands
+
+| Command | Purpose |
+|---|---|
+| `setup` | Fetch, prepare, configure and validate a region end to end |
+| `fetch` | Download the source datasets a bounding box needs |
+| `init` | Create the plugin directory and a matching `terraforge.yml` |
+| `prepare-region` | Prepare an existing source tree for one bounding box |
+| `prepare-dem`, `prepare-landcover`, `prepare-boundaries`, `prepare-cities`, `prepare-geo` | Prepare one dataset |
+| `validate` | Check a prepared database for data-quality problems |
+| `info` | Show projection, scale, region extent and DEM coverage |
+| `pregenerate` | Plan a bounded chunk region |
+
+### In-game commands
 
 | Command | Purpose | Default permission |
 |---|---|---|
@@ -195,6 +218,7 @@ Please report security issues privately as described in [`SECURITY.md`](SECURITY
 
 TerraForge source code is available under the [MIT License](LICENSE).
 
-TerraForge ships **no geodata**. Every dataset is downloaded and prepared by the server operator
-under its own licence. Required attribution and redistribution notes are listed in
+TerraForge ships **no geodata**. Every dataset is downloaded by the operator, from the publisher,
+under the publisher's own licence — whether by hand or through `terraforge fetch`, which prints the
+attribution each source requires. Required attribution and redistribution notes are listed in
 [`DATA_SOURCES.md`](DATA_SOURCES.md).

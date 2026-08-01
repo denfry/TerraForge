@@ -25,6 +25,11 @@ REAL EARTH DATA → TerraForge CLI → natural Minecraft terrain → players bui
 
 ### What is TerraForge?
 
+Generated caves are optional and default off. When enabled, their geometry is generated only
+inside prepared WOKAM karst polygons and may be anchored at real OSM `natural=cave_entrance`
+points; this is not a global 3D cave survey. Man-made vanilla structures remain off by default
+through `generation.man-made-structures`.
+
 TerraForge turns prepared real-world elevation, coastlines, water and land-cover data into
 **deterministic** Minecraft terrain. It generates the planet beneath the players — everything
 man-made is deliberately out of scope, forever.
@@ -61,22 +66,26 @@ is ever enabled.
 | TerraForge data | Prepared locally with the matching `terraforge-cli` release |
 | Optional | Towny / NewTowny, BlueMap |
 
-TerraForge ships **no geodata**. Every dataset is downloaded and prepared by the server operator
-under its own licence — see [DATA_SOURCES.md](https://github.com/denfry/TerraForge/blob/main/DATA_SOURCES.md).
+TerraForge ships **no geodata**. Every dataset is downloaded by the operator from its publisher,
+under that publisher's licence — see [DATA_SOURCES.md](https://github.com/denfry/TerraForge/blob/main/DATA_SOURCES.md).
+The running server never downloads anything.
 
 ### Quick start
 
 1. Download `TerraForge-<version>.jar` from this page and drop it in `plugins/`.
 2. Start the server once so `terraforge.yml` is generated, then stop it.
-3. Prepare a bounded test region offline with the CLI (downloaded from the
-   [GitHub release](https://github.com/denfry/TerraForge/releases)):
+3. Build a bounded test region with the CLI (downloaded from the
+   [GitHub release](https://github.com/denfry/TerraForge/releases)). It downloads the elevation,
+   land-cover, boundary and gazetteer data for the box, prepares it, writes a matching config and
+   validates the result:
 
 ```bash
-java -jar terraforge-cli-<version>.jar prepare-region \
+java -jar terraforge-cli-<version>.jar setup \
     --lat-min 47.0 --lat-max 55.5 --lon-min 5.0 --lon-max 15.5 \
-    -i ./source-data \
     -o ./server/plugins/TerraForge
 ```
+
+Add `--dry-run` first to see how large the download is.
 
 4. Register the generator in `bukkit.yml`:
 

@@ -48,11 +48,21 @@ class DemElevationProviderTest {
     }
 
     @Test
-    void int16TilesReportNoBathymetryAndFloat32TilesDo() throws IOException {
+    void explicitBathymetryFlagIsReportedIndependentlyOfEncoding() throws IOException {
         writeFlatTile(new DemTileKey(50, 8), 250.0);
         assertThat(provider().hasBathymetry()).isFalse();
 
-        writeTile(TfDemHeader.float32(new DemTileKey(50, 9), 2, 2), -40.0);
+        writeTile(TfDemHeader.int16(new DemTileKey(50, 9), 2, 2, true), -40.0);
+        assertThat(provider().hasBathymetry()).isTrue();
+    }
+
+    @Test
+    void versionOneFloat32TilesKeepTheLegacyBathymetryMeaning() throws IOException {
+        DemTileKey key = new DemTileKey(50, 8);
+        TfDemHeader legacy = new TfDemHeader(TfDemFormat.LEGACY_VERSION, TfDemFormat.ENCODING_FLOAT32,
+                2, 2, key.latDegree(), key.lonDegree(), 0, 1, 1, false);
+        writeTile(legacy, -40.0);
+
         assertThat(provider().hasBathymetry()).isTrue();
     }
 

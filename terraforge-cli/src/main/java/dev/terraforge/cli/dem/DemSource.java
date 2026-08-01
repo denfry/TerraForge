@@ -30,8 +30,13 @@ public interface DemSource extends AutoCloseable {
      */
     double[] readRow(int y) throws IOException;
 
-    /** True when the source carries sub-metre or below-sea-floor values that int16 would destroy. */
+    /** True when the source carries sub-metre values that need float32 preservation. */
     default boolean needsFloat32() {
+        return false;
+    }
+
+    /** True when at least one emitted sample comes from GEBCO bathymetry. */
+    default boolean containsBathymetry() throws IOException {
         return false;
     }
 

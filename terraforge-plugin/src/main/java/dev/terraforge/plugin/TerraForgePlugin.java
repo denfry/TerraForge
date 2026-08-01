@@ -14,7 +14,8 @@ import dev.terraforge.core.terrain.VerticalScale;
 import dev.terraforge.geo.dem.DemElevationProvider;
 import dev.terraforge.geo.dem.FileDemReader;
 import dev.terraforge.geo.database.SqliteBoundaryIndex;
-import dev.terraforge.geo.landcover.LandcoverGridFile;
+import dev.terraforge.geo.landcover.FileLandcoverProvider;
+import dev.terraforge.geo.karst.SqliteKarstProvider;
 import dev.terraforge.geo.marker.GeoMarkerPopulator;
 import dev.terraforge.geo.water.IndexedWaterProvider;
 import dev.terraforge.geo.water.SqliteWaterProvider;
@@ -51,6 +52,7 @@ public final class TerraForgePlugin extends JavaPlugin {
     private CacheManager cacheManager;
     private FileDemReader demReader;
     private DemElevationProvider elevation;
+    private FileLandcoverProvider landcover;
     private TerrainStack terrain;
     private SqliteBoundaryIndex boundaries;
     private SqliteTownGeoService townGeography;
@@ -123,7 +125,7 @@ public final class TerraForgePlugin extends JavaPlugin {
         this.elevation = new DemElevationProvider(demReader, cacheManager, config.cache().demTileCacheEntries());
 
         this.terrain = TerrainStack.create(config, transformer, verticalScale, elevation, cacheManager,
-                loadWaterProvider(), loadLandcoverProvider());
+                loadWaterProvider(), loadLandcoverProvider(), loadKarstProvider());
         this.boundaries = loadBoundaryIndex();
     }
 
@@ -147,6 +149,10 @@ public final class TerraForgePlugin extends JavaPlugin {
         }
         if (demReader != null) {
             demReader.close();
+        }
+        if (landcover != null) {
+            landcover.close();
+            landcover = null;
         }
         getLogger().info(LOG_PREFIX + "Disabled.");
     }
@@ -173,6 +179,15 @@ public final class TerraForgePlugin extends JavaPlugin {
         getLogger().info("Vertical:     sea-level " + verticalScale.seaLevel()
                 + ", exaggeration " + verticalScale.verticalExaggeration()
                 + ", " + verticalScale.metersPerBlock() + " m/block");
+        getLogger().info("Relief:       " + verticalScale.earthFit());
+        if (verticalScale.flattensRealTerrain()) {
+            getLogger().warning(LOG_PREFIX + "This world can show less than "
+                    + Math.round(verticalScale.highestUncompressedElevation())
+                    + " m of relief, so mountain ranges will generate as one plateau. Raise "
+                    + "terrain.meters-per-block, or raise terrain.max-y with a matching dimension "
+                    + "type -- see docs/vertical-scale.md. Changing either after chunks exist "
+                    + "leaves a permanent seam.");
+        }
         getLogger().info("Test region:  " + config.testRegion().name() + " " + config.testRegion().toBounds());
         getLogger().info("DEM:          " + demSummary());
         getLogger().info("Towny:        " + integrations.townyStatus());
@@ -255,6 +270,14 @@ public final class TerraForgePlugin extends JavaPlugin {
         }
     }
 
+    private dev.terraforge.core.data.KarstProvider loadKarstProvider() {
+        if (!config.generation().caves()) return dev.terraforge.core.data.KarstProvider.absent();
+        Path database = preparedDatabasePath();
+        if (!Files.isRegularFile(database)) return dev.terraforge.core.data.KarstProvider.absent();
+        try { return SqliteKarstProvider.load(database); }
+        catch (IOException exception) { getLogger().warning(LOG_PREFIX + "Karst: cannot load prepared data: " + exception.getMessage()); return dev.terraforge.core.data.KarstProvider.absent(); }
+    }
+
     private Path preparedDatabasePath() {
         Path pluginRoot = getDataFolder().toPath().toAbsolutePath().normalize();
         Path database = pluginRoot.resolve(config.data().databaseFile()).normalize();
@@ -325,44 +348,31 @@ public final class TerraForgePlugin extends JavaPlugin {
         getLogger().info(LOG_PREFIX + "Towny/NewTowny geography integration enabled.");
     }
 
+    /**
+     * Land cover is catalogued, not loaded: the grids stay on disk and are read on demand into a
+     * bounded cache. A whole-Earth import is tens of thousands of grids, so loading them all would
+     * cost more heap than the server has -- and a regional world gains the same lazy behaviour.
+     */
     private dev.terraforge.core.data.LandcoverProvider loadLandcoverProvider() {
         Path directory = getDataFolder().toPath().resolve(config.data().dataDirectory()).resolve("landcover");
-        if (!Files.isDirectory(directory)) {
-            getLogger().info(LOG_PREFIX + "Land cover: no prepared grids; using climate fallback.");
-            return new dev.terraforge.core.data.ConstantLandcoverProvider(
-                    dev.terraforge.core.data.LandcoverProvider.LandcoverClass.UNKNOWN);
-        }
-        try (var files = Files.list(directory)) {
-            List<Path> grids = files.filter(Files::isRegularFile)
-                    .filter(path -> path.getFileName().toString().toLowerCase().endsWith(".tflc"))
-                    .sorted(Comparator.naturalOrder()).toList();
-            if (grids.isEmpty()) {
+        try {
+            FileLandcoverProvider provider = FileLandcoverProvider.open(
+                    directory, cacheManager, config.cache().landcoverGridCacheEntries());
+            if (provider.gridCount() == 0) {
                 getLogger().info(LOG_PREFIX + "Land cover: no prepared grids; using climate fallback.");
                 return new dev.terraforge.core.data.ConstantLandcoverProvider(
                         dev.terraforge.core.data.LandcoverProvider.LandcoverClass.UNKNOWN);
             }
-            // A grid is immutable and thread-safe. The first matching grid wins, making the
-            // deterministic filename order part of the operator's explicit preparation choice.
-            List<dev.terraforge.core.data.LandcoverProvider> providers = grids.stream()
-                    .map(this::readLandcoverGrid).toList();
-            getLogger().info(LOG_PREFIX + "Land cover: loaded " + providers.size() + " prepared grid(s).");
-            return (latitude, longitude) -> providers.stream()
-                    .map(provider -> provider.landcoverAt(latitude, longitude))
-                    .filter(value -> value != dev.terraforge.core.data.LandcoverProvider.LandcoverClass.UNKNOWN)
-                    .findFirst().orElse(dev.terraforge.core.data.LandcoverProvider.LandcoverClass.UNKNOWN);
+            this.landcover = provider;
+            getLogger().info(LOG_PREFIX + "Land cover: " + provider.gridCount()
+                    + " prepared grid(s) catalogued, up to "
+                    + config.cache().landcoverGridCacheEntries() + " resident.");
+            return provider;
         } catch (IOException | IllegalArgumentException exception) {
             getLogger().warning(LOG_PREFIX + "Land cover: cannot load " + directory + ": "
                     + exception.getMessage() + "; using climate fallback.");
             return new dev.terraforge.core.data.ConstantLandcoverProvider(
                     dev.terraforge.core.data.LandcoverProvider.LandcoverClass.UNKNOWN);
-        }
-    }
-
-    private dev.terraforge.core.data.LandcoverProvider readLandcoverGrid(Path grid) {
-        try {
-            return LandcoverGridFile.read(grid);
-        } catch (IOException exception) {
-            throw new IllegalArgumentException("Invalid prepared land-cover grid " + grid.getFileName(), exception);
         }
     }
 

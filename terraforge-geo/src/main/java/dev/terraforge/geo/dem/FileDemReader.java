@@ -71,8 +71,7 @@ public final class FileDemReader implements DemReader {
                         continue;
                     }
                     catalogue.put(nameKey, file);
-                    // Only float32 preparation carries merged bathymetry; int16 tiles stop at the coast.
-                    bathymetry |= header.encoding() == TfDemFormat.ENCODING_FLOAT32;
+                    bathymetry |= header.bathymetry();
                     // Largest, not mean: the cache bound must hold for the heaviest tile, and a
                     // directory usually has one grid size anyway.
                     largestTileBytes = Math.max(largestTileBytes, header.expectedFileSize());

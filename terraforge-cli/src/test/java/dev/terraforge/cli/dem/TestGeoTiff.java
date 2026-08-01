@@ -16,7 +16,7 @@ import java.util.List;
  * <p>Hand-assembled rather than produced through ImageIO, because the point of the test is to read
  * bytes a GDAL-produced file would actually contain -- including the tags ImageIO does not surface.
  */
-final class TestGeoTiff {
+public final class TestGeoTiff {
 
     private static final int TYPE_SHORT = 3;
     private static final int TYPE_LONG = 4;
@@ -33,12 +33,38 @@ final class TestGeoTiff {
      * @param samples   row-major elevations, north row first
      * @param noData    optional GDAL_NODATA value
      */
-    static void write(Path file, int width, int height, double originLat, double originLon,
-                      double pixelSize, short[] samples, String noData) throws IOException {
+    public static void write(Path file, int width, int height, double originLat, double originLon,
+                             double pixelSize, short[] samples, String noData) throws IOException {
         if (samples.length != width * height) {
             throw new IllegalArgumentException("samples must be width * height");
         }
-        int imageBytes = width * height * 2;
+        write(file, width, height, originLat, originLon, pixelSize, noData, 16, buffer -> {
+            for (short sample : samples) {
+                buffer.putShort(sample);
+            }
+        });
+    }
+
+    /**
+     * The same file with unsigned eight-bit samples: the shape land-cover rasters are published in,
+     * where a sample is a class code rather than a measurement.
+     */
+    public static void writeBytes(Path file, int width, int height, double originLat, double originLon,
+                                  double pixelSize, byte[] samples) throws IOException {
+        if (samples.length != width * height) {
+            throw new IllegalArgumentException("samples must be width * height");
+        }
+        write(file, width, height, originLat, originLon, pixelSize, null, 8, buffer -> buffer.put(samples));
+    }
+
+    private interface Pixels {
+        void write(ByteBuffer buffer);
+    }
+
+    private static void write(Path file, int width, int height, double originLat, double originLon,
+                              double pixelSize, String noData, int bitsPerSample, Pixels pixels)
+            throws IOException {
+        int imageBytes = width * height * (bitsPerSample / 8);
         int imageOffset = 8;
         int scaleOffset = imageOffset + imageBytes;
         int tiepointOffset = scaleOffset + 3 * 8;
@@ -51,14 +77,15 @@ final class TestGeoTiff {
         List<int[]> entries = new ArrayList<>();
         entries.add(entry(256, TYPE_LONG, 1, width));
         entries.add(entry(257, TYPE_LONG, 1, height));
-        entries.add(entry(258, TYPE_SHORT, 1, 16));
+        entries.add(entry(258, TYPE_SHORT, 1, bitsPerSample));
         entries.add(entry(259, TYPE_SHORT, 1, 1));
         entries.add(entry(262, TYPE_SHORT, 1, 1));
         entries.add(entry(273, TYPE_LONG, 1, imageOffset));
         entries.add(entry(277, TYPE_SHORT, 1, 1));
         entries.add(entry(278, TYPE_LONG, 1, height));
         entries.add(entry(279, TYPE_LONG, 1, imageBytes));
-        entries.add(entry(339, TYPE_SHORT, 1, 2));
+        // Signed for elevation, unsigned for class codes.
+        entries.add(entry(339, TYPE_SHORT, 1, bitsPerSample == 8 ? 1 : 2));
         entries.add(entry(33550, TYPE_DOUBLE, 3, scaleOffset));
         entries.add(entry(33922, TYPE_DOUBLE, 6, tiepointOffset));
         if (noData != null) {
@@ -70,9 +97,7 @@ final class TestGeoTiff {
         buffer.put((byte) 'I').put((byte) 'I');
         buffer.putShort((short) 42);
         buffer.putInt(ifdOffset);
-        for (short sample : samples) {
-            buffer.putShort(sample);
-        }
+        pixels.write(buffer);
         buffer.putDouble(pixelSize).putDouble(pixelSize).putDouble(0.0);
         buffer.putDouble(0).putDouble(0).putDouble(0);
         buffer.putDouble(originLon).putDouble(originLat).putDouble(0);

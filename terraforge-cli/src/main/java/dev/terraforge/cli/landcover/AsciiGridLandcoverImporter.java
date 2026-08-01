@@ -1,6 +1,7 @@
 package dev.terraforge.cli.landcover;
 
 import dev.terraforge.core.data.LandcoverProvider.LandcoverClass;
+import dev.terraforge.core.data.WorldCover;
 import dev.terraforge.geo.landcover.LandcoverGridFile;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -90,22 +91,9 @@ public final class AsciiGridLandcoverImporter {
     }
 
     private static LandcoverClass map(double value) {
-        if (value != Math.rint(value)) {
+        if (value != Math.rint(value) || Math.abs(value) > Integer.MAX_VALUE) {
             return LandcoverClass.UNKNOWN;
         }
-        return switch ((int) value) {
-            case 10 -> LandcoverClass.TREE_COVER;
-            case 20 -> LandcoverClass.SHRUBLAND;
-            case 30 -> LandcoverClass.GRASSLAND;
-            case 40 -> LandcoverClass.CROPLAND;
-            case 50 -> LandcoverClass.BUILT_UP;
-            case 60 -> LandcoverClass.BARE_SPARSE;
-            case 70 -> LandcoverClass.SNOW_ICE;
-            case 80 -> LandcoverClass.PERMANENT_WATER;
-            case 90 -> LandcoverClass.HERBACEOUS_WETLAND;
-            case 95 -> LandcoverClass.MANGROVES;
-            case 100 -> LandcoverClass.MOSS_LICHEN;
-            default -> LandcoverClass.UNKNOWN;
-        };
+        return WorldCover.fromCode((int) value);
     }
 }

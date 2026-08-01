@@ -2,6 +2,8 @@ package dev.terraforge.generator;
 
 import dev.terraforge.core.terrain.TerrainSample;
 import dev.terraforge.core.terrain.VerticalScale;
+import dev.terraforge.core.coord.CoordinateTransformer;
+import dev.terraforge.core.data.KarstProvider;
 import dev.terraforge.generator.biome.BiomeMapper;
 import dev.terraforge.generator.pipeline.ChunkSampler;
 import dev.terraforge.generator.pipeline.TerrainPipeline;
@@ -37,14 +39,19 @@ public final class TerraForgeChunkGenerator extends ChunkGenerator {
     private final BiomeMapper biomeMapper;
     private final int bedrockThickness;
     private final boolean vegetation;
+    private final boolean caves;
+    private final KarstCaveCarver caveCarver;
 
     public TerraForgeChunkGenerator(TerrainPipeline pipeline, VerticalScale verticalScale,
-                                    BiomeMapper biomeMapper, int bedrockThickness, boolean vegetation) {
+                                    BiomeMapper biomeMapper, int bedrockThickness, boolean vegetation,
+                                    boolean caves, CoordinateTransformer transformer, KarstProvider karst) {
         this.pipeline = pipeline;
         this.verticalScale = verticalScale;
         this.biomeMapper = biomeMapper;
         this.bedrockThickness = Math.max(1, bedrockThickness);
         this.vegetation = vegetation;
+        this.caves = caves;
+        this.caveCarver = caves ? new KarstCaveCarver(transformer, karst, pipeline) : null;
     }
 
     @Override
@@ -156,13 +163,18 @@ public final class TerraForgeChunkGenerator extends ChunkGenerator {
 
     @Override
     public boolean shouldGenerateCaves() {
-        return false;
+        return caves;
     }
 
-    /** Keep the first real-data pass deterministic; caves can return after terrain validation. */
+    /** Custom caves use geographic coordinates only; the supplied vanilla random is ignored. */
     @Override
     public boolean shouldGenerateCaves(WorldInfo worldInfo, Random random, int chunkX, int chunkZ) {
-        return false;
+        return caves;
+    }
+
+    @Override
+    public void generateCaves(WorldInfo worldInfo, Random random, int chunkX, int chunkZ, ChunkData chunk) {
+        if (caveCarver != null) caveCarver.carve(chunkX, chunkZ, chunk);
     }
 
     @Override

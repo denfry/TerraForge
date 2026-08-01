@@ -80,6 +80,57 @@ public final class VerticalScale {
         return (y - seaLevel) * metersPerBlock / verticalExaggeration;
     }
 
+    /** Highest elevation in metres that keeps its true shape, above which terrain is compressed. */
+    public double highestUncompressedElevation() {
+        return toElevationMeters(maxY - SOFT_CLAMP_MARGIN);
+    }
+
+    /** Deepest elevation in metres that keeps its true shape. Negative below sea level. */
+    public double deepestUncompressedElevation() {
+        return toElevationMeters(minY + SOFT_CLAMP_MARGIN);
+    }
+
+    /**
+     * How this setting treats the real Earth, in one line, for the banner and {@code info}.
+     *
+     * <p>Worth stating out loud because the failure is invisible: a configuration that flattens
+     * every mountain above 250 m into seven blocks is perfectly valid, generates without a
+     * complaint, and is only discovered by standing on the result.
+     */
+    public String earthFit() {
+        double highest = highestUncompressedElevation();
+        double deepest = deepestUncompressedElevation();
+        String range = String.format(java.util.Locale.ROOT,
+                "true shape from %,.0f m to %,.0f m", deepest, highest);
+        if (highest >= EVEREST_METRES && deepest <= MARIANA_METRES) {
+            return range + " -- all of Earth fits";
+        }
+        StringBuilder clipped = new StringBuilder();
+        if (highest < EVEREST_METRES) {
+            clipped.append(String.format(java.util.Locale.ROOT,
+                    "land above %,.0f m is compressed", highest));
+        }
+        if (deepest > MARIANA_METRES) {
+            clipped.append(clipped.isEmpty() ? "" : ", ")
+                    .append(String.format(java.util.Locale.ROOT,
+                            "water below %,.0f m is compressed", -deepest));
+        }
+        return range + " -- " + clipped;
+    }
+
+    /** True when real terrain of any consequence is being squashed into the clamp margin. */
+    public boolean flattensRealTerrain() {
+        // A world that cannot show a thousand metres of relief cannot show a mountain range.
+        return highestUncompressedElevation() < SIGNIFICANT_RELIEF_METRES;
+    }
+
+    /** Everest, and the deepest point of the Mariana Trench: the limits any Earth must reach. */
+    private static final double EVEREST_METRES = 8849.0;
+    private static final double MARIANA_METRES = -10935.0;
+
+    /** Below this much representable relief, whole mountain ranges become one plateau. */
+    private static final double SIGNIFICANT_RELIEF_METRES = 1000.0;
+
     /**
      * Compresses out-of-range values into the margin instead of hard-clipping, so relative height
      * differences survive at the extremes.

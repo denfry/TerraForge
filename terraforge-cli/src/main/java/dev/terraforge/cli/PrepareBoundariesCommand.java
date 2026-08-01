@@ -27,8 +27,10 @@ public final class PrepareBoundariesCommand implements Callable<Integer> {
                         if (!replace && rows.next()) { connection.rollback(); System.err.println("countries already has data; pass --replace to replace it."); return 65; }
                     }
                 }
-                int count = BoundaryGeoJsonImporter.importFile(input, connection); connection.commit();
-                System.out.println("Prepared " + count + " administrative boundary feature(s) in " + database + "."); return 0;
+                var result = BoundaryGeoJsonImporter.importFile(input, connection); connection.commit();
+                System.out.println("Prepared " + result.imported() + " administrative boundary feature(s) in "
+                        + database + (result.skipped() == 0 ? "." : ", " + result.skipped() + " skipped."));
+                return 0;
             }
         } catch (Exception exception) { System.err.println("Cannot prepare boundaries: " + exception.getMessage()); return 74; }
     }

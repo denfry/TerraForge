@@ -21,8 +21,12 @@ import javax.imageio.stream.ImageInputStream;
  * chose. This class is therefore the adapter between the two: it reports which cells the raster
  * covers and hands out a {@link DemSource} per cell.
  *
- * <p>Rows are pulled from ImageIO one at a time, so preparing a continental raster costs one row of
- * memory, not the whole grid. The reader is shared by every cell source and closed with this file.
+ * <p>Rows are pulled from ImageIO a strip at a time, so preparing a continental raster costs a few
+ * hundred rows of memory, not the whole grid. The strip is what makes a tiled COG affordable: those
+ * rasters are stored as square tiles, so asking for a single row still decodes every tile it crosses
+ * -- reading one row at a time re-decodes the same tiles hundreds of times over, turning a tile that
+ * should take seconds into many minutes. The reader is shared by every cell source and closed with
+ * this file.
  *
  * <p>Resampling is nearest-neighbour on purpose. A DEM is measured data: interpolating it here
  * would invent elevations that no survey recorded, and the generator already interpolates between
@@ -40,8 +44,15 @@ public final class GeoTiffDemFile implements AutoCloseable {
     private final ImageReader reader;
     private final int samplesPerAxis;
 
-    private int cachedRow = -1;
-    private double[] cachedValues;
+    /**
+     * Rows decoded per read. Large enough to cover a COG's tile height in one pass, small enough
+     * that the strip stays a few megabytes however wide the raster is.
+     */
+    private static final int STRIP_ROWS = 512;
+
+    private int stripStart = -1;
+    private int stripRows;
+    private double[] strip;
 
     private GeoTiffDemFile(GeoTiffMetadata metadata, ImageInputStream stream, ImageReader reader) {
         this.metadata = metadata;
@@ -107,23 +118,41 @@ public final class GeoTiffDemFile implements AutoCloseable {
     }
 
     /**
-     * Reads one raster row, caching it: consecutive output rows of the same cell often resolve to
-     * the same source row when the output grid is finer than the source.
+     * Value at one source pixel, reading and caching the strip of rows it falls in.
+     *
+     * <p>Output rows walk the raster from north to south, so a strip serves every sample of every
+     * output row that lands in it before the next one is read.
      */
-    private double[] sourceRow(int y) throws IOException {
-        if (y == cachedRow) {
-            return cachedValues;
+    private double sourcePixel(int x, int y) throws IOException {
+        if (stripStart < 0 || y < stripStart || y >= stripStart + stripRows) {
+            readStrip(y);
         }
+        return strip[(y - stripStart) * metadata.width() + x];
+    }
+
+    private void readStrip(int y) throws IOException {
+        int start = y - y % STRIP_ROWS;
+        int rows = Math.min(STRIP_ROWS, metadata.height() - start);
+        int width = metadata.width();
         ImageReadParam parameters = reader.getDefaultReadParam();
-        parameters.setSourceRegion(new Rectangle(0, y, metadata.width(), 1));
+        parameters.setSourceRegion(new Rectangle(0, start, width, rows));
         Raster raster = reader.readRaster(0, parameters);
-        double[] values = new double[metadata.width()];
-        for (int x = 0; x < values.length; x++) {
-            values[x] = raster.getSampleDouble(raster.getMinX() + x, raster.getMinY(), 0);
+        // Measured against Raster.getSamples: the bulk form is about twice as slow here, because
+        // this reader's raster has no optimised override and the generic path costs more per pixel
+        // than getSampleDouble does. The obvious optimisation is the wrong one.
+        double[] values = strip != null && strip.length == width * rows ? strip : new double[width * rows];
+        int minX = raster.getMinX();
+        int minY = raster.getMinY();
+        for (int row = 0; row < rows; row++) {
+            int offset = row * width;
+            int sourceY = minY + row;
+            for (int column = 0; column < width; column++) {
+                values[offset + column] = raster.getSampleDouble(minX + column, sourceY, 0);
+            }
         }
-        cachedRow = y;
-        cachedValues = values;
-        return values;
+        stripStart = start;
+        stripRows = rows;
+        strip = values;
     }
 
     private double sample(double latitude, double longitude) throws IOException {
@@ -141,7 +170,7 @@ public final class GeoTiffDemFile implements AutoCloseable {
         if (x < 0 || y < 0 || x >= metadata.width() || y >= metadata.height()) {
             return ElevationProvider.NO_DATA;
         }
-        double value = sourceRow(y)[x];
+        double value = sourcePixel(x, y);
         if (!Double.isFinite(value)) {
             return ElevationProvider.NO_DATA;
         }

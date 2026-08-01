@@ -112,6 +112,31 @@ class TfDemRoundTripTest {
     }
 
     @Test
+    void headerRoundTripsExplicitBathymetryFlag() throws IOException {
+        DemTileKey key = new DemTileKey(43, 6);
+        TfDemHeader header = TfDemHeader.int16(key, 241, 241, true);
+
+        TfDemHeader parsed = TfDemHeader.parse(header.toBuffer());
+
+        assertThat(parsed.version()).isEqualTo(TfDemFormat.VERSION);
+        assertThat(parsed.bathymetry()).isTrue();
+        assertThat(parsed.encoding()).isEqualTo(TfDemFormat.ENCODING_INT16);
+    }
+
+    @Test
+    void replacingAnExistingTilePublishesTheNewSamples() throws IOException {
+        DemTileKey key = new DemTileKey(43, 6);
+        writeTile(TfDemHeader.int16(key, 2, 2), new double[][] {{10.0, 10.0}, {10.0, 10.0}});
+        writeTile(TfDemHeader.int16(key, 2, 2, true), new double[][] {{-20.0, -20.0}, {-20.0, -20.0}});
+
+        DemTile tile = MappedDemTile.open(directory.resolve(key.fileName()));
+        assertThat(tile.sample(0, 0)).isCloseTo(-20.0, METER);
+        byte[] bytes = Files.readAllBytes(directory.resolve(key.fileName()));
+        assertThat(TfDemHeader.parse(java.nio.ByteBuffer.wrap(bytes, 0, TfDemFormat.HEADER_BYTES)).bathymetry())
+                .isTrue();
+    }
+
+    @Test
     void aShortTileIsNeverPublished() throws IOException {
         DemTileKey key = new DemTileKey(50, 8);
         TfDemWriter writer = TfDemWriter.create(directory, TfDemHeader.int16(key, 2, 2));

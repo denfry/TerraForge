@@ -1,6 +1,7 @@
 package dev.terraforge.cli;
 
 import dev.terraforge.cli.dem.DemSource;
+import dev.terraforge.cli.dem.BathymetryDemSource;
 import dev.terraforge.cli.dem.DemTranscoder;
 import dev.terraforge.cli.dem.GeoTiffDemFile;
 import dev.terraforge.cli.dem.HgtDemSource;
@@ -41,6 +42,9 @@ public final class PrepareDemCommand implements Callable<Integer> {
 
     @Option(names = "--overwrite", description = "Rewrite tiles that already exist.")
     boolean overwrite;
+
+    @Option(names = "--bathymetry", description = "Mark every input raster as GEBCO bathymetry.")
+    boolean bathymetry;
 
     @Override
     public Integer call() {
@@ -89,7 +93,7 @@ public final class PrepareDemCommand implements Callable<Integer> {
 
         for (Path file : hgtFiles) {
             try (DemSource source = HgtDemSource.open(file)) {
-                DemTranscoder.Result result = transcoder.transcode(source);
+                DemTranscoder.Result result = transcode(transcoder, source);
                 if (result.skipped()) {
                     skipped++;
                     System.out.printf(Locale.ROOT, "  %-10s exists, skipped%n", source.key());
@@ -109,7 +113,7 @@ public final class PrepareDemCommand implements Callable<Integer> {
             try (GeoTiffDemFile raster = GeoTiffDemFile.open(file)) {
                 for (var key : raster.tiles()) {
                     DemSource source = raster.sourceFor(key);
-                    DemTranscoder.Result result = transcoder.transcode(source);
+                    DemTranscoder.Result result = transcode(transcoder, source);
                     if (result.skipped()) {
                         skipped++;
                         System.out.printf(Locale.ROOT, "  %-10s exists, skipped%n", key);
@@ -131,5 +135,14 @@ public final class PrepareDemCommand implements Callable<Integer> {
         // A partial run is still useful -- a missing tile is a coverage gap, not a fatal error --
         // but the exit code has to say that not everything was prepared.
         return failures.isEmpty() ? 0 : 65; // EX_DATAERR
+    }
+
+    private DemTranscoder.Result transcode(DemTranscoder transcoder, DemSource source) throws IOException {
+        if (!bathymetry) {
+            return transcoder.transcode(source);
+        }
+        try (DemSource marked = new BathymetryDemSource(source)) {
+            return transcoder.transcode(marked);
+        }
     }
 }

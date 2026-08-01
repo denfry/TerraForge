@@ -61,9 +61,15 @@ vegetation:
   density: 1.0
 
 generation:
-  # Natural terrain only: no structures, villages, roads or buildings of any kind.
+  # Natural terrain only: no player infrastructure is generated.
   # Strongly recommended - players and Towny provide all infrastructure.
   natural-only: true
+  # Generated cave geometry is constrained by prepared WOKAM karst polygons and may be anchored
+  # at prepared OSM natural=cave_entrance points. It is not a survey of real 3D cave geometry.
+  caves: false
+  # Vanilla's structure pass mixes natural and man-made structures; leave this off to prevent
+  # villages, temples, mineshafts, strongholds and other human-made generation.
+  man-made-structures: false
   worker-threads: 4
 
 # Hard switches for man-made features. TerraForge has no code path that builds them;
@@ -85,6 +91,9 @@ data:
 cache:
   memory-limit-mb: 1024
   dem-tile-cache-entries: 256
+  # Prepared land-cover grids kept resident. Grids are read on demand, so a planet-wide
+  # import costs no more memory than a regional one -- only more files on disk.
+  landcover-grid-cache-entries: 256
   chunk-cache-entries: 4096
   statistics-interval-seconds: 300
 

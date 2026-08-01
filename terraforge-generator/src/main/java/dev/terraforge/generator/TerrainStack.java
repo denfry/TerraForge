@@ -8,6 +8,7 @@ import dev.terraforge.core.data.ElevationProvider;
 import dev.terraforge.core.data.LandcoverProvider;
 import dev.terraforge.core.data.SeaLevelWaterProvider;
 import dev.terraforge.core.data.WaterProvider;
+import dev.terraforge.core.data.KarstProvider;
 import dev.terraforge.core.terrain.ClimateBiomeResolver;
 import dev.terraforge.core.terrain.VerticalScale;
 import dev.terraforge.generator.biome.BiomeMapper;
@@ -29,14 +30,19 @@ public final class TerrainStack {
     private final VerticalScale verticalScale;
     private final BiomeMapper biomeMapper;
     private final TerraForgeConfig config;
+    private final CoordinateTransformer transformer;
+    private final KarstProvider karst;
 
     private TerrainStack(DefaultTerrainPipeline pipeline, CachingChunkSampler chunkSampler,
-                         VerticalScale verticalScale, BiomeMapper biomeMapper, TerraForgeConfig config) {
+                         VerticalScale verticalScale, BiomeMapper biomeMapper, TerraForgeConfig config,
+                         CoordinateTransformer transformer, KarstProvider karst) {
         this.pipeline = pipeline;
         this.chunkSampler = chunkSampler;
         this.verticalScale = verticalScale;
         this.biomeMapper = biomeMapper;
         this.config = config;
+        this.transformer = transformer;
+        this.karst = karst;
     }
 
     /**
@@ -57,6 +63,12 @@ public final class TerrainStack {
                                       VerticalScale verticalScale, ElevationProvider elevation,
                                       CacheManager cacheManager, WaterProvider water,
                                       LandcoverProvider landcover) {
+        return create(config, transformer, verticalScale, elevation, cacheManager, water, landcover, KarstProvider.absent());
+    }
+    public static TerrainStack create(TerraForgeConfig config, CoordinateTransformer transformer,
+                                      VerticalScale verticalScale, ElevationProvider elevation,
+                                      CacheManager cacheManager, WaterProvider water,
+                                      LandcoverProvider landcover, KarstProvider karst) {
 
         var samplerHolder = new java.util.concurrent.atomic.AtomicReference<CachingChunkSampler>();
         DefaultTerrainPipeline pipeline = DefaultTerrainPipeline.builder()
@@ -77,7 +89,7 @@ public final class TerrainStack {
                 .build();
 
         return new TerrainStack(pipeline, samplerHolder.get(), verticalScale,
-                new ClimateBiomeMapper(), config);
+                new ClimateBiomeMapper(), config, transformer, karst);
     }
 
     public DefaultTerrainPipeline pipeline() {
@@ -91,6 +103,7 @@ public final class TerrainStack {
     /** A chunk generator bound to this stack; one per world. */
     public TerraForgeChunkGenerator chunkGenerator() {
         return new TerraForgeChunkGenerator(pipeline, verticalScale, biomeMapper,
-                config.terrain().bedrockThickness(), config.vegetation().enabled());
+                config.terrain().bedrockThickness(), config.vegetation().enabled(), config.generation().caves(),
+                transformer, karst);
     }
 }

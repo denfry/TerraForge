@@ -9,6 +9,29 @@ format. Both are stated explicitly per release, because either one means regener
 
 ## [Unreleased]
 
+### Added
+
+- `terraforge setup`: one command that creates the plugin data directory, downloads every source
+  dataset a bounding box needs, prepares it and validates the result. Preparing a region no longer
+  starts with five browser tabs and a manual directory layout.
+- `terraforge fetch`: downloads Copernicus DEM (GLO-30 or GLO-90), ESA WorldCover, Natural Earth
+  boundaries and lakes, and the GeoNames gazetteer for a bounding box, from mirrors that need no
+  account. `--dry-run` reports the download size first; a re-run fetches only what is missing.
+- `terraforge init`: creates the plugin directory tree and a `terraforge.yml` whose origin and
+  test region match the box the data was prepared for. An existing config is never rewritten
+  without `--replace-config`.
+- Land-cover preparation now reads GeoTIFF as well as Arc/Info ASCII, subsampling each source into
+  one prepared grid per degree cell (`--samples-per-degree`, default 600).
+- Boundary and water imports now read Natural Earth's published attributes as well as TerraForge's
+  own schema. Territories with no ISO 3166-1 code are reported and skipped instead of failing the
+  import; reservoirs are skipped as man-made water.
+
+### Fixed
+
+- Preparing a DEM from a tiled COG read one row at a time, decoding every tile it crossed hundreds
+  of times over: a single Copernicus GLO-30 tile took over ten minutes. Rows are now read in strips,
+  which brings the same tile down to about five seconds.
+
 ## [0.1.1] - 2026-07-29
 
 ### Changed

@@ -1,5 +1,14 @@
 # Configuration
 
+## Caves and structures
+
+`generation.caves` defaults to `false`. When enabled, TerraForge generates deterministic cave
+geometry only inside prepared WOKAM karst polygons; nearby OSM `natural=cave_entrance` points can
+anchor passages. Neither dataset provides global 3D cave surveys.
+
+`generation.man-made-structures` defaults to `false`; keep it disabled to prevent villages,
+temples, mineshafts, strongholds, portals, shipwrecks and other human-made vanilla structures.
+
 The file lives at `plugins/TerraForge/terraforge.yml` and is created from the bundled default on
 first start. Every option is honoured by the runtime; validation is strict and the plugin refuses to
 enable on an invalid configuration rather than generating a broken world.
@@ -54,9 +63,10 @@ those natural WKB geometries into memory at startup. A missing, empty or unreada
 logged and safely falls back to elevation-derived oceans; it never floods unknown data as water.
 
 Prepare source water data offline with `terraforge prepare-geo --input <directory> --database
-<file>`. Each `.geojson` file must be a GeoJSON `FeatureCollection` of `Polygon` or `MultiPolygon`
-features in WGS84, and every feature must explicitly set `properties.water_type` to `OCEAN`, `LAKE`
-or `RIVER`. Existing water data is protected; pass `--replace-water` only when deliberately
+<file>`. Lakes and oceans use GeoJSON `Polygon` or `MultiPolygon` features. River GeoJSON may use
+`LineString` or `MultiLineString` with `DIS_AV_CMS`; `prepare-region` also accepts the official
+HydroRIVERS `.shp` + `.dbf` pair directly. River lines are widened and their beds carved during
+offline preparation. Existing water data is protected; pass `--replace-water` only when deliberately
 rebuilding it.
 
 ## `biomes`
@@ -103,11 +113,18 @@ explicit and auditable.
 |---|---|---|
 | `memory-limit-mb` | `1024` | soft ceiling across all in-memory caches |
 | `dem-tile-cache-entries` | `256` | resident DEM tiles |
+| `landcover-grid-cache-entries` | `256` | resident prepared land-cover grids |
 | `chunk-cache-entries` | `4096` | resident prepared chunk samples |
 | `statistics-interval-seconds` | `300` | how often cache stats are logged in debug mode |
 
 At ~25 MB per `int16` tile, 256 tiles is ~6 GB of mapped files — address space, not heap, but keep
 `memory-limit-mb` aligned with the server's actual headroom.
+
+Land-cover grids are heap, not mapped: at the default 600 samples per degree a grid is ~360 KB, so
+256 of them is ~92 MB. Both caches are bounded by count *and* by `memory-limit-mb`, whichever binds
+first, so neither can be made to exceed the budget by raising the other. This is what makes the size
+of a prepared world a disk question rather than a memory one — a whole-Earth import is tens of
+thousands of grids on disk and the same 92 MB resident as a single test region.
 
 ## `towny` / `bluemap`
 

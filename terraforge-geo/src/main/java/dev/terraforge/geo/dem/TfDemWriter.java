@@ -136,8 +136,10 @@ public final class TfDemWriter implements AutoCloseable {
             if (failed) {
                 Files.deleteIfExists(temporary);
             } else {
-                Files.move(temporary, target,
-                        StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+                // Windows does not honour REPLACE_EXISTING together with ATOMIC_MOVE for an
+                // existing mapped target. Same-directory moves remain atomic where supported,
+                // while REPLACE_EXISTING is required for the land-to-GEBCO merge.
+                Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
             }
         }
     }

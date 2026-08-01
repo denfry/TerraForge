@@ -73,6 +73,13 @@ public final class DefaultTerrainPipeline implements TerrainPipeline {
         WaterType waterType = classifyWater(latitude, longitude, meters, fallback);
         double waterSurfaceMeters = waterSurface(latitude, longitude, meters, waterType);
 
+        if (waterType == WaterType.RIVER) {
+            // HydroRIVERS has a centreline and discharge, not bathymetry. The provider gives the
+            // prepared width-derived depth; preserve the DEM height as the water surface and carve
+            // only the shallow channel so the surrounding real valley stays intact.
+            meters -= water.riverBedDepthMeters(latitude, longitude, meters);
+        }
+
         // Below the surface of a water body the terrain is the sea or lake bed. Without bathymetry
         // the DEM stops at the coast, so the configured default depth stands in for it -- and the
         // column is marked as a fallback, because that depth is a guess, not a measurement.
@@ -88,6 +95,10 @@ public final class DefaultTerrainPipeline implements TerrainPipeline {
         int waterSurfaceY = waterType.isWater()
                 ? verticalScale.toBlockY(waterSurfaceMeters)
                 : verticalScale.seaLevel();
+        if (waterType == WaterType.RIVER) {
+            // Rounding at coarse vertical scales must not put the carved bed back level with water.
+            surfaceY = Math.min(surfaceY, waterSurfaceY - 1);
+        }
 
         return new TerrainSample(meters, surfaceY, waterType, waterSurfaceY, cover, biome, fallback);
     }

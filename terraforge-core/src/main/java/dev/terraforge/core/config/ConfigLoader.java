@@ -80,6 +80,8 @@ public final class ConfigLoader {
         require(config.cache() != null && config.cache().memoryLimitMb() > 0,
                 "cache.memory-limit-mb must be greater than 0");
         require(config.cache().demTileCacheEntries() > 0, "cache.dem-tile-cache-entries must be greater than 0");
+        require(config.cache().landcoverGridCacheEntries() > 0,
+                "cache.landcover-grid-cache-entries must be greater than 0");
 
         TerraForgeConfig.DataSection data = config.data();
         require(data != null, "data section must be present");

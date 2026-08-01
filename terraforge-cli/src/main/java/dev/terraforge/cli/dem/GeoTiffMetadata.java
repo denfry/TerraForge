@@ -30,8 +30,9 @@ import java.util.Map;
  * @param floatingPoint true when samples are IEEE floating point
  * @param noData        the raster's no-data value, or {@code null} when it declares none
  */
-record GeoTiffMetadata(int width, int height, double originLon, double originLat,
-                       double pixelSizeLon, double pixelSizeLat, boolean floatingPoint, Double noData) {
+public record GeoTiffMetadata(int width, int height, double originLon, double originLat,
+                              double pixelSizeLon, double pixelSizeLat, boolean floatingPoint,
+                              Double noData) {
 
     private static final int TAG_IMAGE_WIDTH = 256;
     private static final int TAG_IMAGE_HEIGHT = 257;
@@ -46,7 +47,7 @@ record GeoTiffMetadata(int width, int height, double originLon, double originLat
     /** Largest plausible degrees-per-pixel: anything coarser is not a DEM worth preparing. */
     private static final double MAX_PIXEL_SIZE_DEGREES = 1.0;
 
-    static GeoTiffMetadata read(Path file) throws IOException {
+    public static GeoTiffMetadata read(Path file) throws IOException {
         try (FileChannel channel = FileChannel.open(file, StandardOpenOption.READ)) {
             ByteBuffer header = read(channel, 0, 8);
             ByteOrder order = byteOrder(header);
@@ -96,11 +97,11 @@ record GeoTiffMetadata(int width, int height, double originLon, double originLat
     }
 
     /** Geographic bounds of the raster. */
-    double southLatitude() {
+    public double southLatitude() {
         return originLat - height * pixelSizeLat;
     }
 
-    double eastLongitude() {
+    public double eastLongitude() {
         return originLon + width * pixelSizeLon;
     }
 

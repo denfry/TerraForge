@@ -39,10 +39,10 @@ public record TerraForgeConfig(
                 new WaterSection(true, true, true, 30.0),
                 new BiomesSection(true, 0.35),
                 new VegetationSection(true, 1.0),
-                new GenerationSection(true, 4),
+                new GenerationSection(true, false, false, 4),
                 InfrastructureSection.allDisabled(),
                 new DataSection("data", "cache", "terraforge.db"),
-                new CacheSection(1024, 256, 4096, 300),
+                new CacheSection(1024, 256, DEFAULT_LANDCOVER_GRID_CACHE_ENTRIES, 4096, 300),
                 new TownySection(true),
                 new BlueMapSection(true, true, true),
                 new DebugSection(false, false),
@@ -106,12 +106,17 @@ public record TerraForgeConfig(
     }
 
     /**
-     * @param naturalOnly     when true, no structures of any kind are generated. Default and
-     *                        strongly recommended -- players build the infrastructure.
+     * @param naturalOnly     retained for existing configuration files; TerraForge never generates
+     *                        player infrastructure.
+     * @param caves           enables generated geometry constrained by prepared karst data. It is
+     *                        off by default so existing worlds never change unexpectedly.
+     * @param manMadeStructures enables vanilla's mixed structure pass. This is off by default and
+     *                        is not used while natural-only is enabled.
      * @param workerThreads   threads used for asynchronous chunk data preparation
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record GenerationSection(boolean naturalOnly, int workerThreads) {
+    public record GenerationSection(boolean naturalOnly, boolean caves, boolean manMadeStructures,
+                                    int workerThreads) {
     }
 
     /**
@@ -144,6 +149,7 @@ public record TerraForgeConfig(
     /**
      * @param memoryLimitMb        soft ceiling for all in-memory caches
      * @param demTileCacheEntries  DEM tiles kept resident
+     * @param landcoverGridCacheEntries prepared land-cover grids kept resident
      * @param chunkCacheEntries    prepared chunk samples kept resident
      * @param statisticsIntervalSeconds how often cache statistics are logged in debug mode
      */
@@ -151,9 +157,23 @@ public record TerraForgeConfig(
     public record CacheSection(
             int memoryLimitMb,
             int demTileCacheEntries,
+            int landcoverGridCacheEntries,
             int chunkCacheEntries,
             int statisticsIntervalSeconds) {
+
+        /**
+         * A config written before this key existed loads with land cover unbounded, which is exactly
+         * the behaviour that made a planet-wide world impossible. Absent means default, not zero.
+         */
+        public CacheSection {
+            if (landcoverGridCacheEntries <= 0) {
+                landcoverGridCacheEntries = DEFAULT_LANDCOVER_GRID_CACHE_ENTRIES;
+            }
+        }
     }
+
+    /** Enough for a 5x5 degree working area at the default grid size, about 92 MiB. */
+    public static final int DEFAULT_LANDCOVER_GRID_CACHE_ENTRIES = 256;
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record TownySection(boolean enabled) {

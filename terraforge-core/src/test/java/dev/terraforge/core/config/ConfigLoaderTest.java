@@ -30,6 +30,8 @@ class ConfigLoaderTest {
         assertThat(config.earth().originPoint().latitude()).isEqualTo(51.0);
         assertThat(config.terrain().seaLevel()).isEqualTo(63);
         assertThat(config.generation().naturalOnly()).isTrue();
+        assertThat(config.generation().caves()).isFalse();
+        assertThat(config.generation().manMadeStructures()).isFalse();
         assertThat(config.infrastructure().anyEnabled()).isFalse();
         assertThat(config.testRegion().name()).isEqualTo("central-europe");
         assertThat(config.testRegion().toBounds().contains(50.11, 8.68)).isTrue();

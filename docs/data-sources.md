@@ -8,13 +8,17 @@ which dataset to pick and how it flows into the world.
 | Provider | Dataset kind | Recommended source | Required? |
 |---|---|---|---|
 | `ElevationProvider` | DEM raster | Copernicus DEM GLO-30 | **yes** — without it there is no terrain |
-| `WaterProvider` | coastline + water polygons | Natural Earth ocean/lakes, HydroLAKES | strongly recommended |
+| `WaterProvider` | coastline, water polygons + river lines | Natural Earth ocean/lakes + HydroRIVERS | strongly recommended |
 | `LandcoverProvider` | land cover raster | ESA WorldCover | recommended — otherwise biomes fall back to a climate estimate |
 | `CountryProvider` | admin boundaries | Natural Earth Admin 0/1 | optional — needed for `/earth whereami` |
 | gazetteer | populated places | GeoNames `cities15000` | optional — needed for `/earth city` |
 
 Only the DEM is mandatory. Everything else degrades gracefully: no boundaries means "unknown
 country", not a crash.
+
+`terraforge setup` fetches and prepares all of the recommended sources for a bounding box in one
+command — see the [installation guide](installation.md). This document is for deciding when to
+depart from those defaults.
 
 ## Choosing a resolution
 
@@ -40,6 +44,24 @@ cannot reach the database, the generator or the world:
 This is enforced in code, not by convention, and it is the reason OSM can be used at all: it
 contributes rivers and coastlines, never roads.
 
+## Rivers
+
+HydroRIVERS line features are buffered during preparation.  Their channel width is
+`max(1000 / blocks-per-km, 7.2 × sqrt(DIS_AV_CMS))` metres, with discharge in m³/s. The first
+term deliberately widens sub-block rivers to one block rather than dropping them: at the default
+1 block/km, a physically accurate 10–100 m river cannot survive a 1,000 m grid cell, and silently
+removing the connected river network would be less truthful than showing its navigable course.
+
+The bed is then carved by `clamp(width / 20, 1, 10)` metres below the DEM-derived water surface.
+This keeps water below both banks without inventing a replacement valley. Run `prepare-region` with
+the same `--blocks-per-km` as the world (and re-prepare after changing scale); `setup` passes it
+automatically. Published source data is recognised leniently, but canal and reservoir labels are
+rejected at preparation time under TerraForge's natural-only rule.
+
+`fetch` downloads the publisher's global Shapefile ZIP anonymously, extracts its `.shp` and `.dbf`
+members, and `prepare-region` reads those two files offline. No server process downloads or parses
+source vectors at runtime.
+
 ## Land cover to biome
 
 Land cover is the primary biome signal; elevation, latitude and water state refine it. Built-up and
@@ -47,17 +69,25 @@ cropland pixels are mapped to the natural vegetation of their surroundings — a
 the forest or grassland that would grow there.
 
 Prepare a WGS84 raster offline, then put the compact output in
-`plugins/TerraForge/data/landcover/`. The CLI accepts Arc/Info ASCII Grid (`.asc`) with ESA
-WorldCover codes and writes `.tflc`; use GDAL to convert a GeoTIFF once when needed:
+`plugins/TerraForge/data/landcover/`. The CLI reads ESA WorldCover class codes from GeoTIFF or from
+Arc/Info ASCII Grid (`.asc`) and writes `.tflc`. GeoTIFF needs no GDAL step:
 
 ```bash
-gdal_translate -of AAIGrid WorldCover.tif worldcover.asc
-java -jar terraforge-cli.jar prepare-landcover -i worldcover.asc \
-  -o plugins/TerraForge/data/landcover/region.tflc
+java -jar terraforge-cli.jar prepare-landcover \
+  -i ESA_WorldCover_10m_2021_v200_N45E006_Map.tif \
+  -o plugins/TerraForge/data/landcover
 ```
 
-Existing prepared grids are preserved by default; use `--overwrite` only when intentionally
-replacing a grid.
+A GeoTIFF covers several degree cells at a resolution far finer than any world can show, so it is
+sliced into one grid per cell and subsampled to `--samples-per-degree` (default 600, about 185 m).
+The step must divide the source resolution exactly, so 600 works for WorldCover's 12000 pixels per
+degree and 700 does not — the command says which divisors are available. Resolution here costs
+server memory directly: every prepared grid stays resident while the server runs, so at the default
+1 block per kilometre there is nothing to gain above the default.
+
+An ASCII grid is one region and becomes one file, so `-o` is the `.tflc` path rather than a
+directory. Existing prepared grids are preserved by default; use `--overwrite` only when
+intentionally replacing a grid.
 
 ## Place names
 

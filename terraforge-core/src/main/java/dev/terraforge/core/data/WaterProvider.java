@@ -33,6 +33,14 @@ public interface WaterProvider {
         return waterSurfaceElevation(latitude, longitude);
     }
 
+    /**
+     * Depth to carve below a river's water surface, in metres. Non-river providers return zero.
+     * The value is prepared from the source channel width, so generation remains read-only.
+     */
+    default double riverBedDepthMeters(double latitude, double longitude, double knownElevationMeters) {
+        return 0.0;
+    }
+
     /** Water classification of one column. */
     enum WaterType {
         NONE,

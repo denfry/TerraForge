@@ -27,6 +27,8 @@ Desktop.ini
 /run/
 /data/
 /cache/
+/source-data/
+/server/
 *.db
 *.db-shm
 *.db-wal
@@ -48,3 +50,12 @@ Desktop.ini
 
 # Локальный кэш инструментов
 /.claude/
+/.codex/
+/.cursor/
+/.opencode/
+/.windsurf/
+/.zed/
+/.playwright-mcp/
+
+# codebase-index cache (machine-local; do not commit)
+.claude/cache/codebase-index/

@@ -49,9 +49,10 @@ public final class DemTranscoder {
         }
 
         int effectiveEncoding = source.needsFloat32() ? TfDemFormat.ENCODING_FLOAT32 : encoding;
+        boolean bathymetry = source.containsBathymetry();
         TfDemHeader header = effectiveEncoding == TfDemFormat.ENCODING_FLOAT32
-                ? TfDemHeader.float32(source.key(), source.width(), source.height())
-                : TfDemHeader.int16(source.key(), source.width(), source.height());
+                ? TfDemHeader.float32(source.key(), source.width(), source.height(), bathymetry)
+                : TfDemHeader.int16(source.key(), source.width(), source.height(), bathymetry);
 
         long voids = 0;
         try (TfDemWriter writer = TfDemWriter.create(outputDirectory, header)) {

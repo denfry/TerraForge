@@ -4,6 +4,29 @@ TerraForge **ships no geodata**. This repository contains code only; `.gitignore
 raster and vector format so datasets cannot be committed by accident. The server operator downloads
 the data and is responsible for complying with its licence, including attribution.
 
+## Letting the CLI download them
+
+`terraforge fetch` (and `terraforge setup`, which calls it) downloads the recommended defaults for a
+bounding box. It changes nothing about the licensing position: the files come from the publisher, to
+your machine, under the publisher's terms, and the command prints the attribution each one requires
+when it finishes. Nothing is redistributed by this project, and the running server never downloads
+anything.
+
+| Dataset | Mirror | Needs an account? |
+|---|---|---|
+| Copernicus DEM GLO-30 / GLO-90 | `copernicus-dem-30m` / `copernicus-dem-90m` on AWS Open Data | no |
+| GEBCO 2024 bathymetry | CEDA / BODC GEBCO archive | no |
+| ESA WorldCover 2021 v200 | `esa-worldcover` on AWS Open Data | no |
+| Natural Earth 1:10m admin 0/1, lakes | `nvkelso/natural-earth-vector`, pinned to a release tag | no |
+| GeoNames `cities500`…`cities15000` | `download.geonames.org` | no |
+
+Natural Earth is pinned to a tag rather than a branch so the same command prepares the same world
+later; the rasters are already versioned in their own paths. Ocean-only DEM tiles are simply not
+published, and a 404 for one is reported as "not published", not as a failure.
+
+Anything else — a different DEM, a national dataset, a higher-detail boundary set — is downloaded by
+hand into the same layout and prepared with `prepare-region`.
+
 ---
 
 ## Elevation (DEM)
@@ -16,8 +39,8 @@ the data and is responsible for complying with its licence, including attributio
 | ASTER GDEM v3 | 30 m | 83°N–83°S | free with attribution to METI/NASA | noisier than Copernicus |
 | GEBCO 2024 | ~450 m | global, **bathymetry** | free with attribution to GEBCO | use for ocean depth |
 
-Land DEMs stop at the shoreline. For realistic ocean floors, merge a land DEM with GEBCO during
-preparation, or accept the configured `water.default-ocean-depth` fallback.
+Land DEMs stop at the shoreline. `prepare-region` merges GEBCO automatically when both source
+directories are present, and keeps ocean-only cells at GEBCO's native 15 arc-second resolution.
 
 Required attribution examples:
 
@@ -72,7 +95,12 @@ climate — TerraForge renders no settlements or fields.
 |---|---|---|
 | **Natural Earth lakes / ocean** | coastlines, large lakes | public domain |
 | HydroLAKES | detailed lake polygons | CC BY 4.0 |
-| HydroRIVERS | natural river network | CC BY 4.0 |
+| **HydroRIVERS v1** | global natural river-line network (`DIS_AV_CMS`) | CC BY 4.0 |
+
+HydroRIVERS is downloaded anonymously from HydroSHEDS. TerraForge uses its discharge estimate only
+to derive a deterministic visible channel width; it rejects labelled canals and reservoirs while
+preparing the database. Attribution: *Lehner, B. and G. Grill (2013), Global river hydrography and
+network routing: baseline data and new approaches to study the world's large river systems.*
 | OpenStreetMap `natural=water`, `waterway=river/stream` | detailed natural water | ODbL 1.0 |
 
 ### OpenStreetMap usage policy

@@ -16,6 +16,9 @@ import picocli.CommandLine.Command;
         versionProvider = TerraForgeCli.VersionProvider.class,
         description = "TerraForge offline data preparation.",
         subcommands = {
+                SetupCommand.class,
+                InitCommand.class,
+                FetchCommand.class,
                 InfoCommand.class,
                 PrepareDemCommand.class,
                 PrepareBoundariesCommand.class,

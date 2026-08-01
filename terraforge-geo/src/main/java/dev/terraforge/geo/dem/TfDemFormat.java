@@ -19,7 +19,8 @@ package dev.terraforge.geo.dem;
  * 24     4     no-data sentinel, as raw sample value (big endian, signed)
  * 28     4     vertical unit scale numerator   (samples * num / den = metres)
  * 32     4     vertical unit scale denominator
- * 36     28    reserved, zero filled
+ * 36     1     flags: bit 0 means the tile contains GEBCO bathymetry (v2+)
+ * 37     27    reserved, zero filled
  * 64     ...   samples, row-major from the north-west corner
  * </pre>
  *
@@ -29,16 +30,22 @@ package dev.terraforge.geo.dem;
 public final class TfDemFormat {
 
     public static final int MAGIC = 0x5446_444D; // "TFDM"
-    public static final int VERSION = 1;
+    /** Version written by current preparation commands. */
+    public static final int VERSION = 2;
+    /** Version without explicit content flags; kept readable for existing prepared data. */
+    public static final int LEGACY_VERSION = 1;
     public static final int HEADER_BYTES = 64;
 
     /** 16-bit signed metres: SRTM-compatible, one byte per sample cheaper than floats. */
     public static final int ENCODING_INT16 = 1;
-    /** 32-bit float metres: used when the source has sub-metre precision or bathymetry. */
+    /** 32-bit float metres: used when the source has sub-metre precision. */
     public static final int ENCODING_FLOAT32 = 2;
 
     /** Sentinel written for missing samples in {@link #ENCODING_INT16} tiles. */
     public static final short INT16_NO_DATA = Short.MIN_VALUE;
+
+    /** Header flag at offset 36: samples include GEBCO bathymetry. */
+    public static final int FLAG_BATHYMETRY = 1;
 
     private TfDemFormat() {
     }

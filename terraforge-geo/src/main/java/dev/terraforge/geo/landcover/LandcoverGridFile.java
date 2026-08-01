@@ -17,7 +17,24 @@ public final class LandcoverGridFile {
     private static final short VERSION = 1;
     private static final int MAX_CELLS = 64 * 1024 * 1024;
 
+    /** magic + version + four extent doubles + width + height. */
+    public static final int HEADER_BYTES = 4 + 2 + 8 * 4 + 4 + 4;
+
     private LandcoverGridFile() {
+    }
+
+    /**
+     * Extent and shape of a prepared grid, read without its samples.
+     *
+     * <p>Cataloguing a directory this way is what lets a planet-wide world start: the runtime learns
+     * where every grid is from {@value #HEADER_BYTES} bytes per file and loads the samples only for
+     * the cells that are actually generated.
+     */
+    public record Header(double south, double west, double north, double east, int width, int height) {
+
+        public long sampleBytes() {
+            return (long) width * height;
+        }
     }
 
     public static void write(Path target, double south, double west, double north, double east,
@@ -42,38 +59,53 @@ public final class LandcoverGridFile {
         }
     }
 
+    /** Reads only the extent and shape; the samples are not touched. */
+    public static Header readHeader(Path source) throws IOException {
+        try (DataInputStream input = new DataInputStream(new BufferedInputStream(
+                Files.newInputStream(source), HEADER_BYTES))) {
+            return header(source, input);
+        } catch (EOFException exception) {
+            throw new IOException(source + " is truncated", exception);
+        }
+    }
+
     public static GridLandcoverProvider read(Path source) throws IOException {
         try (DataInputStream input = new DataInputStream(new BufferedInputStream(Files.newInputStream(source)))) {
-            if (input.readInt() != MAGIC) {
-                throw new IOException(source + " is not a TerraForge land-cover grid");
-            }
-            if (input.readShort() != VERSION) {
-                throw new IOException(source + " uses an unsupported land-cover format version");
-            }
-            double south = input.readDouble();
-            double west = input.readDouble();
-            double north = input.readDouble();
-            double east = input.readDouble();
-            int width = input.readInt();
-            int height = input.readInt();
-            int cells = checkedCellCount(width, height);
-            LandcoverClass[] classes = LandcoverClass.values();
-            LandcoverClass[] values = new LandcoverClass[cells];
-            for (int i = 0; i < cells; i++) {
-                int ordinal = input.readUnsignedByte();
-                if (ordinal >= classes.length) {
+            Header header = header(source, input);
+            int cells = checkedCellCount(header.width(), header.height());
+            byte[] ordinals = new byte[cells];
+            input.readFully(ordinals);
+            int classCount = LandcoverClass.values().length;
+            for (byte ordinal : ordinals) {
+                if (ordinal < 0 || ordinal >= classCount) {
                     throw new IOException(source + " contains an unknown land-cover class");
                 }
-                values[i] = classes[ordinal];
             }
             if (input.read() != -1) {
                 throw new IOException(source + " has trailing data");
             }
-            validate(south, west, north, east, width, height, cells);
-            return new GridLandcoverProvider(south, west, north, east, width, height, values);
+            return new GridLandcoverProvider(header.south(), header.west(), header.north(), header.east(),
+                    header.width(), header.height(), ordinals);
         } catch (EOFException exception) {
             throw new IOException(source + " is truncated", exception);
         }
+    }
+
+    private static Header header(Path source, DataInputStream input) throws IOException {
+        if (input.readInt() != MAGIC) {
+            throw new IOException(source + " is not a TerraForge land-cover grid");
+        }
+        if (input.readShort() != VERSION) {
+            throw new IOException(source + " uses an unsupported land-cover format version");
+        }
+        double south = input.readDouble();
+        double west = input.readDouble();
+        double north = input.readDouble();
+        double east = input.readDouble();
+        int width = input.readInt();
+        int height = input.readInt();
+        validate(south, west, north, east, width, height, checkedCellCount(width, height));
+        return new Header(south, west, north, east, width, height);
     }
 
     private static void validate(double south, double west, double north, double east,

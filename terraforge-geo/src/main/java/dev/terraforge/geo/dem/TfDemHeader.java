@@ -21,6 +21,7 @@ import java.util.Locale;
  * @param noDataRaw       sentinel, as a raw sample value
  * @param scaleNumerator  raw * numerator / denominator = metres
  * @param scaleDenominator see {@code scaleNumerator}
+ * @param bathymetry      whether this v2 tile contains GEBCO bathymetry samples
  */
 public record TfDemHeader(
         int version,
@@ -31,12 +32,14 @@ public record TfDemHeader(
         int westLongitude,
         int noDataRaw,
         int scaleNumerator,
-        int scaleDenominator) {
+        int scaleDenominator,
+        boolean bathymetry) {
 
     public TfDemHeader {
-        if (version != TfDemFormat.VERSION) {
+        if (version != TfDemFormat.VERSION && version != TfDemFormat.LEGACY_VERSION) {
             throw new IllegalArgumentException(
-                    "Unsupported .tfdem version " + version + " (expected " + TfDemFormat.VERSION + ")");
+                    "Unsupported .tfdem version " + version + " (expected "
+                            + TfDemFormat.LEGACY_VERSION + " or " + TfDemFormat.VERSION + ")");
         }
         TfDemFormat.bytesPerSample(encoding);
         if (width < 2 || height < 2) {
@@ -55,14 +58,24 @@ public record TfDemHeader(
 
     /** Header for a metre-precision int16 tile, the default preparation output. */
     public static TfDemHeader int16(DemTileKey key, int width, int height) {
+        return int16(key, width, height, false);
+    }
+
+    /** Header for a metre-precision int16 tile, optionally containing GEBCO bathymetry. */
+    public static TfDemHeader int16(DemTileKey key, int width, int height, boolean bathymetry) {
         return new TfDemHeader(TfDemFormat.VERSION, TfDemFormat.ENCODING_INT16, width, height,
-                key.latDegree(), key.lonDegree(), TfDemFormat.INT16_NO_DATA, 1, 1);
+                key.latDegree(), key.lonDegree(), TfDemFormat.INT16_NO_DATA, 1, 1, bathymetry);
     }
 
     /** Header for a float32 tile, used for sub-metre precision or merged bathymetry. */
     public static TfDemHeader float32(DemTileKey key, int width, int height) {
+        return float32(key, width, height, false);
+    }
+
+    /** Header for a float32 tile, optionally containing GEBCO bathymetry. */
+    public static TfDemHeader float32(DemTileKey key, int width, int height, boolean bathymetry) {
         return new TfDemHeader(TfDemFormat.VERSION, TfDemFormat.ENCODING_FLOAT32, width, height,
-                key.latDegree(), key.lonDegree(), 0, 1, 1);
+                key.latDegree(), key.lonDegree(), 0, 1, 1, bathymetry);
     }
 
     public DemTileKey key() {
@@ -95,6 +108,7 @@ public record TfDemHeader(
         buffer.putInt(noDataRaw);
         buffer.putInt(scaleNumerator);
         buffer.putInt(scaleDenominator);
+        buffer.put((byte) (bathymetry ? TfDemFormat.FLAG_BATHYMETRY : 0));
         while (buffer.hasRemaining()) {
             buffer.put((byte) 0);
         }
@@ -118,16 +132,22 @@ public record TfDemHeader(
                     "Not a .tfdem file: magic 0x%08X (expected 0x%08X)", magic, TfDemFormat.MAGIC));
         }
         try {
+            int version = big.getShort(4) & 0xFFFF;
+            int encoding = big.getShort(6) & 0xFFFF;
+            boolean bathymetry = version == TfDemFormat.LEGACY_VERSION
+                    ? encoding == TfDemFormat.ENCODING_FLOAT32
+                    : (big.get(36) & TfDemFormat.FLAG_BATHYMETRY) != 0;
             return new TfDemHeader(
-                    big.getShort(4) & 0xFFFF,
-                    big.getShort(6) & 0xFFFF,
+                    version,
+                    encoding,
                     big.getInt(8),
                     big.getInt(12),
                     big.getInt(16),
                     big.getInt(20),
                     big.getInt(24),
                     big.getInt(28),
-                    big.getInt(32));
+                    big.getInt(32),
+                    bathymetry);
         } catch (IllegalArgumentException e) {
             throw new IOException("Invalid .tfdem header: " + e.getMessage(), e);
         }

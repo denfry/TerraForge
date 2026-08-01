@@ -86,7 +86,7 @@ public final class PrepareGeoCommand implements Callable<Integer> {
                     }
                 }
                 int total = 0;
-                for (Path file : files) total += WaterGeoJsonImporter.importFile(file, connection, clip);
+                for (Path file : files) total += WaterGeoJsonImporter.importFile(file, connection, clip).imported();
                 connection.commit();
                 System.out.println("Prepared " + total + " natural water feature(s) in " + database + ".");
                 return 0;

@@ -10,6 +10,7 @@ import dev.terraforge.core.data.ConstantLandcoverProvider;
 import dev.terraforge.core.data.ElevationProvider;
 import dev.terraforge.core.data.LandcoverProvider.LandcoverClass;
 import dev.terraforge.core.data.WaterProvider.WaterType;
+import dev.terraforge.core.data.WaterProvider;
 import dev.terraforge.core.projection.EquirectangularProjection;
 import dev.terraforge.core.terrain.ClimateBiome;
 import dev.terraforge.core.terrain.TerrainSample;
@@ -142,6 +143,24 @@ class DefaultTerrainPipelineTest {
                 .build();
 
         assertThat(pipeline.sampleColumn(25.0, 10.0).biome()).isEqualTo(ClimateBiome.DESERT);
+    }
+
+    @Test
+    void riverWaterSitsAboveItsWidthDerivedBed() {
+        WaterProvider river = new WaterProvider() {
+            @Override public WaterType waterTypeAt(double latitude, double longitude) { return WaterType.RIVER; }
+            @Override public double waterSurfaceElevation(double latitude, double longitude) { return 0.0; }
+            @Override public double waterSurfaceElevation(double latitude, double longitude, double elevation) { return elevation; }
+            @Override public double riverBedDepthMeters(double latitude, double longitude, double elevation) { return 4.0; }
+        };
+        DefaultTerrainPipeline pipeline = DefaultTerrainPipeline.builder().elevation(constant(100.0))
+                .water(river).verticalScale(SCALE).chunkSampler(DefaultTerrainPipelineTest::sampler).build();
+
+        TerrainSample sample = pipeline.sampleColumn(50.0, 8.0);
+
+        assertThat(sample.waterType()).isEqualTo(WaterType.RIVER);
+        assertThat(sample.waterSurfaceY()).isEqualTo(163);
+        assertThat(sample.surfaceY()).isLessThan(sample.waterSurfaceY());
     }
 
     // --- fixtures -----------------------------------------------------------
