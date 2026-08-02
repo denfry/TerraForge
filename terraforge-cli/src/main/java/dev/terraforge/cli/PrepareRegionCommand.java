@@ -10,6 +10,7 @@ import dev.terraforge.cli.dem.PreparedDemSource;
 import dev.terraforge.cli.geo.BoundaryGeoJsonImporter;
 import dev.terraforge.cli.geo.GeoNamesCityImporter;
 import dev.terraforge.cli.geo.KarstGeoJsonImporter;
+import dev.terraforge.cli.geo.KarstShapefileImporter;
 import dev.terraforge.cli.geo.HydroRiversShapefileImporter;
 import dev.terraforge.cli.geo.WaterGeoJsonImporter;
 import dev.terraforge.cli.landcover.AsciiGridLandcoverImporter;
@@ -70,6 +71,9 @@ public final class PrepareRegionCommand implements Callable<Integer> {
     /** Below this, a stage finishes before a progress line would have been printed. */
     private static final int PROGRESS_THRESHOLD = 20;
 
+    /** Stages {@code --skip} accepts, in the order they run. */
+    private static final List<String> STAGES = List.of("dem", "bathymetry", "landcover", "database");
+
     @Option(names = "--lat-min", required = true) double latMin;
     @Option(names = "--lat-max", required = true) double latMax;
     @Option(names = "--lon-min", required = true) double lonMin;
@@ -102,6 +106,15 @@ public final class PrepareRegionCommand implements Callable<Integer> {
             description = "Replace prepared boundaries, cities and water, and rewrite existing tiles.")
     boolean replace;
 
+    @Option(names = "--replace-database",
+            description = "Replace the prepared vector tables without rewriting DEM or land-cover "
+                    + "tiles. This is how a dataset is added to an already prepared region.")
+    boolean replaceDatabase;
+
+    @Option(names = "--skip", split = ",", paramLabel = "<stage>",
+            description = "Stages not to run: dem, bathymetry, landcover, database.")
+    List<String> skip;
+
     @Option(names = "--threads",
             description = "Raster files transcoded in parallel. Default: one per CPU core, at most 8.")
     Integer threads;
@@ -122,6 +135,7 @@ public final class PrepareRegionCommand implements Callable<Integer> {
         int demEncoding;
         int parallelism;
         try {
+            validateStages();
             demEncoding = DemTranscoder.parseEncoding(encoding);
             parallelism = resolveThreads();
         } catch (IllegalArgumentException exception) {
@@ -135,7 +149,7 @@ public final class PrepareRegionCommand implements Callable<Integer> {
         List<Path> boundaryFiles = sources("boundaries", ".geojson");
         List<Path> cityFiles = sources("cities", ".txt");
         List<Path> waterFiles = sources("water", ".geojson", ".shp");
-        List<Path> karstFiles = sources("karst", ".geojson");
+        List<Path> karstFiles = sources("karst", ".geojson", ".shp");
         List<Path> entranceFiles = sources("cave-entrances", ".geojson");
         if (demFiles.isEmpty() && bathymetryFiles.isEmpty() && landcoverFiles.isEmpty() && boundaryFiles.isEmpty()
                 && cityFiles.isEmpty() && waterFiles.isEmpty() && karstFiles.isEmpty() && entranceFiles.isEmpty()) {
@@ -149,16 +163,31 @@ public final class PrepareRegionCommand implements Callable<Integer> {
         // Said before the work starts, because "27,000 DEM files on 8 threads" is what tells an
         // operator whether this is a coffee or an overnight run.
         System.out.printf(Locale.ROOT,
-                "Sources:    %,d DEM, %,d bathymetry, %,d landcover, %,d boundary, %,d gazetteer, %,d water file(s); "
-                        + "%d thread(s)%n",
+                "Sources:    %,d DEM, %,d bathymetry, %,d landcover, %,d boundary, %,d gazetteer, "
+                        + "%,d water, %,d karst file(s); %d thread(s)%n",
                 demFiles.size(), bathymetryFiles.size(), landcoverFiles.size(), boundaryFiles.size(), cityFiles.size(),
-                waterFiles.size(), parallelism);
+                waterFiles.size(), karstFiles.size(), parallelism);
 
-        int failures = prepareDem(demFiles, clip, demEncoding)
-                + prepareBathymetry(bathymetryFiles, clip, demEncoding)
-                + prepareLandcover(landcoverFiles, clip);
+        int failures = 0;
+        if (skipping("dem")) {
+            System.out.println("DEM:        skipped by --skip.");
+        } else {
+            failures += prepareDem(demFiles, clip, demEncoding);
+        }
+        if (skipping("bathymetry")) {
+            System.out.println("Bathymetry: skipped by --skip.");
+        } else {
+            failures += prepareBathymetry(bathymetryFiles, clip, demEncoding);
+        }
+        if (skipping("landcover")) {
+            System.out.println("Landcover:  skipped by --skip.");
+        } else {
+            failures += prepareLandcover(landcoverFiles, clip);
+        }
 
-        if (!boundaryFiles.isEmpty() || !cityFiles.isEmpty() || !waterFiles.isEmpty() || !karstFiles.isEmpty() || !entranceFiles.isEmpty()) {
+        if (skipping("database")) {
+            System.out.println("Database:   skipped by --skip.");
+        } else if (!boundaryFiles.isEmpty() || !cityFiles.isEmpty() || !waterFiles.isEmpty() || !karstFiles.isEmpty() || !entranceFiles.isEmpty()) {
             int result = prepareDatabase(boundaryFiles, cityFiles, waterFiles, karstFiles, entranceFiles, clip);
             if (result != EX_OK) {
                 return result;
@@ -181,6 +210,7 @@ public final class PrepareRegionCommand implements Callable<Integer> {
             return 0;
         }
         Path target = output.resolve("data").resolve("dem");
+        announce("DEM", files.size(), "source raster(s)");
         // Immutable, and every tile it writes goes to its own file, so one transcoder serves
         // every thread.
         DemTranscoder transcoder = new DemTranscoder(target, demEncoding, replace);
@@ -239,7 +269,9 @@ public final class PrepareRegionCommand implements Callable<Integer> {
         DemTranscoder transcoder = new DemTranscoder(target, demEncoding, true);
         AtomicInteger written = new AtomicInteger();
         AtomicInteger failed = new AtomicInteger();
-        ProgressReporter progress = progressFor("Transcoded", files.size());
+        int cells = countBathymetryCells(files, clip);
+        announce("Bathymetry", cells, "ocean cell(s) from " + files.size() + " raster(s)");
+        ProgressReporter progress = progressFor("Transcoded", cells);
         forEach(files, file -> {
             try (GeoTiffDemFile raster = GeoTiffDemFile.open(file)) {
                 for (DemTileKey key : raster.tiles()) {
@@ -259,16 +291,41 @@ public final class PrepareRegionCommand implements Callable<Integer> {
                         }
                     }
                     written.incrementAndGet();
+                    // Per cell, not per file: eight rasters cover the planet, so a file-level
+                    // counter sits on 0/8 for the first hour and reports no usable rate or eta.
+                    progress.step();
                 }
             } catch (IOException | RuntimeException exception) {
                 failed.incrementAndGet();
                 fail(file, exception);
             }
-            progress.step();
         });
         progress.finish();
         System.out.println("Bathymetry: " + written + " tile(s) written, " + failed + " failed -> " + target);
         return failed.get();
+    }
+
+    /**
+     * How many one-degree cells the bathymetry rasters actually contribute, for the progress total.
+     *
+     * <p>Metadata only -- {@link GeoTiffDemFile#tiles()} does not read samples -- so counting eight
+     * rasters costs a moment against the hours the stage then runs.
+     */
+    private int countBathymetryCells(List<Path> files, Envelope clip) {
+        int cells = 0;
+        for (Path file : files) {
+            try (GeoTiffDemFile raster = GeoTiffDemFile.open(file)) {
+                for (DemTileKey key : raster.tiles()) {
+                    if (intersects(key, clip)) {
+                        cells++;
+                    }
+                }
+            } catch (IOException | RuntimeException exception) {
+                // Best effort: a raster that cannot be opened fails loudly in the transcode below,
+                // which is where the failure belongs. An undercounted total only weakens the eta.
+            }
+        }
+        return cells;
     }
 
     /**
@@ -310,6 +367,7 @@ public final class PrepareRegionCommand implements Callable<Integer> {
         AtomicInteger written = new AtomicInteger();
         AtomicInteger skipped = new AtomicInteger();
         AtomicInteger failed = new AtomicInteger();
+        announce("Landcover", files.size(), "source raster(s)");
         ProgressReporter progress = progressFor("Prepared", files.size());
 
         // Source tiles do not overlap, so no two threads write the same prepared cell.
@@ -412,6 +470,34 @@ public final class PrepareRegionCommand implements Callable<Integer> {
         return Math.max(1, Runtime.getRuntime().availableProcessors() - 1);
     }
 
+    /** A misspelled stage silently preparing nothing is worse than a usage error. */
+    private void validateStages() {
+        if (skip == null) {
+            return;
+        }
+        for (String stage : skip) {
+            if (!STAGES.contains(stage.trim().toLowerCase(Locale.ROOT))) {
+                throw new IllegalArgumentException(
+                        "Unknown stage '" + stage + "'; expected one of " + STAGES);
+            }
+        }
+    }
+
+    private boolean skipping(String stage) {
+        return skip != null && skip.stream().anyMatch(value -> value.trim().equalsIgnoreCase(stage));
+    }
+
+    /**
+     * Announces a stage before it works rather than after.
+     *
+     * <p>A stage that prints only its summary is indistinguishable from a hang for however long it
+     * runs, which on a planet is hours.
+     */
+    private static void announce(String name, long items, String unit) {
+        System.out.printf(Locale.ROOT, "%-11s %,d %s...%n", name + ":", items, unit);
+        System.out.flush();
+    }
+
     private static void fail(Path file, Exception exception) {
         synchronized (System.err) {
             System.err.println("  failed: " + file.getFileName() + ": " + exception.getMessage());
@@ -446,29 +532,43 @@ public final class PrepareRegionCommand implements Callable<Integer> {
                     String occupied = clearOrDetect(connection, boundaries, cities, water, karst, entrances);
                     if (occupied != null) {
                         connection.rollback();
-                        System.err.println(occupied + " already has data; pass --replace to replace it.");
+                        System.err.println(occupied + " already has data; pass --replace-database to "
+                                + "rebuild the vector tables, or --replace to rebuild everything.");
                         return EX_DATAERR;
                     }
                     // Boundaries first: a city resolves its country by ISO code as it is inserted.
                     int countries = 0;
                     int unplaceable = 0;
                     for (Path file : boundaries) {
+                        importing("boundaries", file);
                         var result = BoundaryGeoJsonImporter.importFile(file, connection, clip);
                         countries += result.imported();
                         unplaceable += result.skipped();
                     }
                     int places = 0;
                     for (Path file : cities) {
+                        importing("cities", file);
                         places += GeoNamesCityImporter.importFile(file, connection, clip);
                     }
                     int waters = 0;
                     for (Path file : water) {
+                        importing("water", file);
                         waters += file.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".shp")
                                 ? HydroRiversShapefileImporter.importFile(file, connection, clip, blocksPerKm).imported()
                                 : WaterGeoJsonImporter.importFile(file, connection, clip, blocksPerKm).imported();
                     }
-                    int karsts = 0; for (Path file : karst) karsts += KarstGeoJsonImporter.importKarst(file, connection, clip);
-                    int caveEntrances = 0; for (Path file : entrances) caveEntrances += KarstGeoJsonImporter.importEntrances(file, connection, clip);
+                    int karsts = 0;
+                    for (Path file : karst) {
+                        importing("karst", file);
+                        karsts += file.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".shp")
+                                ? KarstShapefileImporter.importFile(file, connection, clip).imported()
+                                : KarstGeoJsonImporter.importKarst(file, connection, clip);
+                    }
+                    int caveEntrances = 0;
+                    for (Path file : entrances) {
+                        importing("cave entrances", file);
+                        caveEntrances += KarstGeoJsonImporter.importEntrances(file, connection, clip);
+                    }
                     connection.commit();
                     report("Boundaries:", boundaries, countries, "feature(s)");
                     if (unplaceable > 0) {
@@ -513,7 +613,7 @@ public final class PrepareRegionCommand implements Callable<Integer> {
         if (!entrances.isEmpty()) targets.add("cave_entrances");
         try (Statement statement = connection.createStatement()) {
             for (String table : targets) {
-                if (replace) {
+                if (replace || replaceDatabase) {
                     statement.executeUpdate("DELETE FROM " + table);
                 } else {
                     try (var rows = statement.executeQuery("SELECT 1 FROM " + table + " LIMIT 1")) {
@@ -525,6 +625,25 @@ public final class PrepareRegionCommand implements Callable<Integer> {
             }
         }
         return null;
+    }
+
+    /**
+     * Names the vector file about to be read, before reading it.
+     *
+     * <p>The whole import is one transaction and the importers report only totals, so a 2 GB river
+     * shapefile is otherwise several silent minutes between the land-cover summary and the first
+     * database line.
+     */
+    private static void importing(String what, Path file) {
+        long size;
+        try {
+            size = Files.size(file);
+        } catch (IOException exception) {
+            size = -1;
+        }
+        System.out.printf(Locale.ROOT, "  reading %s: %s%s...%n", what, file.getFileName(),
+                size < 0 ? "" : " (" + ProgressReporter.humanBytes(size) + ")");
+        System.out.flush();
     }
 
     private static void report(String label, List<Path> files, int count, String unit) {

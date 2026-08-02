@@ -44,7 +44,8 @@ public final class FetchCommand implements Callable<Integer> {
     String cities;
 
     @Option(names = "--skip", split = ",", paramLabel = "<dataset>",
-            description = "Datasets not to fetch: dem, bathymetry, landcover, boundaries, cities, water.")
+            description = "Datasets not to fetch: dem, bathymetry, landcover, boundaries, cities, "
+                    + "water, karst.")
     List<String> skip;
 
     @Option(names = "--dry-run", description = "Report how much would be downloaded, and stop.")

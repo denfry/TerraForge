@@ -2,7 +2,9 @@ package dev.terraforge.plugin;
 
 import dev.terraforge.bluemap.BlueMapMarkerHook;
 import dev.terraforge.bluemap.TerraForgeBlueMapHook;
+import dev.terraforge.core.api.GeoBoundaryProjector;
 import dev.terraforge.core.api.GeoMarkerService;
+import dev.terraforge.core.api.GeoPointResolver;
 import dev.terraforge.core.api.InMemoryGeoMarkerService;
 import dev.terraforge.core.cache.CacheManager;
 import dev.terraforge.core.config.ConfigLoader;
@@ -11,9 +13,11 @@ import dev.terraforge.core.coord.CoordinateTransformer;
 import dev.terraforge.core.projection.Projection;
 import dev.terraforge.core.projection.ProjectionRegistry;
 import dev.terraforge.core.terrain.VerticalScale;
+import dev.terraforge.geo.database.BlockCountryResolver;
+import dev.terraforge.geo.database.JtsBoundaryProjector;
+import dev.terraforge.geo.database.SqliteBoundaryIndex;
 import dev.terraforge.geo.dem.DemElevationProvider;
 import dev.terraforge.geo.dem.FileDemReader;
-import dev.terraforge.geo.database.SqliteBoundaryIndex;
 import dev.terraforge.geo.landcover.FileLandcoverProvider;
 import dev.terraforge.geo.karst.SqliteKarstProvider;
 import dev.terraforge.geo.marker.GeoMarkerPopulator;
@@ -75,6 +79,7 @@ public final class TerraForgePlugin extends JavaPlugin {
         }
 
         this.integrations = IntegrationStatus.detect(getServer().getPluginManager(), config);
+        initializeBoundaryServices();
         initializeMarkers();
         initializeTownyIntegration();
         initializeBlueMapIntegration();
@@ -288,13 +293,30 @@ public final class TerraForgePlugin extends JavaPlugin {
     }
 
     /**
+     * Registers the geography services other plugins consume through Bukkit's ServicesManager.
+     *
+     * <p>Boundary projection and point→country resolution both depend on the prepared database and
+     * the live coordinate system, so they are registered only when a database was loaded. NewTowny
+     * (and any other plugin) soft-depends on TerraForge and loads them by interface.
+     */
+    private void initializeBoundaryServices() {
+        if (boundaries == null) {
+            return;
+        }
+        getServer().getServicesManager().register(GeoBoundaryProjector.class,
+                new JtsBoundaryProjector(boundaries, transformer), this, org.bukkit.plugin.ServicePriority.Normal);
+        getServer().getServicesManager().register(GeoPointResolver.class,
+                new BlockCountryResolver(boundaries, transformer), this, org.bukkit.plugin.ServicePriority.Normal);
+        getLogger().info(LOG_PREFIX + "Boundary services registered for other plugins.");
+    }
+
+    /**
      * Publishes the prepared geography into the marker registry.
      *
      * <p>The registry exists whether or not BlueMap is installed: other plugins register their own
      * markers through it, and a later BlueMap install picks up everything already there.
      */
-    private void initializeMarkers() {
-        this.markers = new InMemoryGeoMarkerService();
+    private void initializeMarkers() {        this.markers = new InMemoryGeoMarkerService();
         var bluemapConfig = config.bluemap();
         int published = GeoMarkerPopulator.populate(markers, boundaries,
                 GeoMarkerPopulator.Options.defaults(

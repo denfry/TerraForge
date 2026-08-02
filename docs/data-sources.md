@@ -12,6 +12,7 @@ which dataset to pick and how it flows into the world.
 | `LandcoverProvider` | land cover raster | ESA WorldCover | recommended — otherwise biomes fall back to a climate estimate |
 | `CountryProvider` | admin boundaries | Natural Earth Admin 0/1 | optional — needed for `/earth whereami` |
 | gazetteer | populated places | GeoNames `cities15000` | optional — needed for `/earth city` |
+| `KarstProvider` | karst aquifer polygons | WHYMAP WOKAM v1 | optional — needed only for `generation.caves` |
 
 Only the DEM is mandatory. Everything else degrades gracefully: no boundaries means "unknown
 country", not a crash.
@@ -61,6 +62,31 @@ rejected at preparation time under TerraForge's natural-only rule.
 `fetch` downloads the publisher's global Shapefile ZIP anonymously, extracts its `.shp` and `.dbf`
 members, and `prepare-region` reads those two files offline. No server process downloads or parses
 source vectors at runtime.
+
+## Caves
+
+Caves are generated geometry, constrained by real karst polygons and anchored at real OSM cave
+entrances when one is nearby. They are not surveyed cave geometry, because no open global dataset of
+that exists — individual cave surveys are per-cave, in Survex and Therion formats, with no worldwide
+coverage. Describing the result as "real caves" would be a straightforward lie; describing it as
+"caves only where caves can actually form" is accurate.
+
+`fetch` downloads the WOKAM Shapefile ZIP from BGR anonymously and extracts every `.shp` in it into
+`karst/`, because the archive's layer names are not a published contract and have changed between
+editions. `prepare-region` reads polygon records and ignores layers holding anything else, so a
+springs or points layer beside the karst layer costs an import nothing.
+
+Two things then stand between prepared data and a cave:
+
+- `generation.caves` defaults to `false`. It changes what an existing world generates, so turning it
+  on is deliberate, not a side effect of downloading a dataset.
+- With no karst data prepared, the setting generates nothing at all rather than falling back to
+  noise. Caves confined to real karst is the whole point; caves everywhere would be vanilla.
+
+Every decision the carver makes derives from the geographic coordinate, never from the world seed,
+so the same configuration and the same data produce the same caves on every server and every run.
+
+Cave entrances are optional. Without them the systems are placed from the karst polygons alone.
 
 ## Land cover to biome
 

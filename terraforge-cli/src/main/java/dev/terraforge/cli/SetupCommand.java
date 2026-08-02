@@ -76,7 +76,8 @@ public final class SetupCommand implements Callable<Integer> {
     String cities;
 
     @Option(names = "--skip", split = ",", paramLabel = "<dataset>",
-            description = "Datasets not to fetch: dem, landcover, boundaries, cities, water.")
+            description = "Datasets not to fetch: dem, bathymetry, landcover, boundaries, cities, "
+                    + "water, karst.")
     List<String> skip;
 
     @Option(names = "--encoding", defaultValue = "int16",

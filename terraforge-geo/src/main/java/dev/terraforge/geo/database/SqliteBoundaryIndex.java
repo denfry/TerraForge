@@ -35,6 +35,7 @@ public final class SqliteBoundaryIndex implements GeoService {
     private final List<Country> countryList;
     private final List<Region> regionList;
     private final List<City> cities;
+    private final Map<Integer, Geometry> geometryByCountryId;
     private final GeoBounds coverage;
 
     /**
@@ -60,12 +61,14 @@ public final class SqliteBoundaryIndex implements GeoService {
 
     private SqliteBoundaryIndex(SpatialIndex<Country> countries, SpatialIndex<Region> regions,
                                 List<Country> countryList, List<Region> regionList, List<City> cities,
-                                Map<String, List<City>> citiesByAlias) {
+                                Map<String, List<City>> citiesByAlias,
+                                Map<Integer, Geometry> geometryByCountryId) {
         this.countries = countries;
         this.regions = regions;
         this.countryList = countryList;
         this.regionList = regionList;
         this.cities = cities;
+        this.geometryByCountryId = geometryByCountryId;
         this.citiesByAlias = citiesByAlias;
         this.coverage = coverageOf(countryList);
 
@@ -100,7 +103,25 @@ public final class SqliteBoundaryIndex implements GeoService {
         }
         return new SqliteBoundaryIndex(new JtsSpatialIndex<>(countries), new JtsSpatialIndex<>(regions),
                 countries.stream().map(JtsSpatialIndex.Entry::value).toList(),
-                regions.stream().map(JtsSpatialIndex.Entry::value).toList(), List.copyOf(cities), aliases);
+                regions.stream().map(JtsSpatialIndex.Entry::value).toList(), List.copyOf(cities), aliases,
+                geometryByCountryId(countries));
+    }
+
+    /** Country-id → WGS84 geometry, exposed for boundary projection to other plugins. */
+    private static Map<Integer, Geometry> geometryByCountryId(List<JtsSpatialIndex.Entry<Country>> countries) {
+        Map<Integer, Geometry> byId = new LinkedHashMap<>();
+        for (JtsSpatialIndex.Entry<Country> entry : countries) {
+            byId.put(entry.value().id(), entry.geometry());
+        }
+        return byId;
+    }
+
+    /** The WGS84 polygon(s) of a country, used to build projected boundary regions. */
+    public Optional<Geometry> geometryOf(Country country) {
+        if (country == null) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(geometryByCountryId.get(country.id()));
     }
 
     public Optional<Country> countryAt(double latitude, double longitude) {

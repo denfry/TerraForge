@@ -25,8 +25,21 @@ format. Both are stated explicitly per release, because either one means regener
 - Boundary and water imports now read Natural Earth's published attributes as well as TerraForge's
   own schema. Territories with no ISO 3166-1 code are reported and skipped instead of failing the
   import; reservoirs are skipped as man-made water.
+- `fetch` downloads the WHYMAP WOKAM karst aquifer map from BGR as the `karst` dataset and unpacks
+  every shapefile in it, so generated caves can be constrained to rock caves actually form in.
+  Preparation reads WOKAM's polygon layers directly and ignores the archive's other layers.
+- `prepare-region --skip` runs a subset of the stages (`dem`, `bathymetry`, `landcover`,
+  `database`), and `--replace-database` rebuilds the vector tables without rewriting prepared
+  tiles. Adding a dataset to a prepared region no longer means re-transcoding every DEM tile.
 
 ### Fixed
+
+- The bathymetry stage counted progress in source files rather than degree cells. Eight GEBCO
+  rasters cover the planet, so the progress line sat at `0/8` for the first hour and reported no
+  usable rate or eta — indistinguishable from a hang. Every stage now announces itself before it
+  works rather than after, and the vector import names each file as it opens it.
+- HydroRIVERS attribution was missing from the licence summary `fetch` prints, although the dataset
+  is CC BY 4.0 and requires it.
 
 - Preparing a DEM from a tiled COG read one row at a time, decoding every tile it crossed hundreds
   of times over: a single Copernicus GLO-30 tile took over ten minutes. Rows are now read in strips,

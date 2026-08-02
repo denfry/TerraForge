@@ -35,6 +35,17 @@ public final class SourceCatalog {
     private static final URI HYDRORIVERS = URI.create(
             "https://data.hydrosheds.org/file/HydroRIVERS/HydroRIVERS_v10_shp.zip");
 
+    /**
+     * WOKAM, the World Karst Aquifer Map: polygons of soluble rock, served without restriction by
+     * BGR. DOI 10.25928/b2.21_sfkq-r406.
+     *
+     * <p>It maps where caves <em>can</em> form, which is as close to global cave data as open data
+     * gets -- there is no worldwide dataset of surveyed cave geometry, so what TerraForge generates
+     * inside these polygons is generated, not surveyed.
+     */
+    private static final URI WOKAM = URI.create(
+            "https://download.bgr.de/bgr/grundwasser/whymap/shp/WHYMAP_WOKAM_v1.zip");
+
     private static final String WORLD_COVER =
             "https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map/";
 
@@ -170,6 +181,11 @@ public final class SourceCatalog {
     public static List<Download> water() {
         return List.of(naturalEarth("water", "ne_10m_lakes.geojson"),
                 new Download("water", "HydroRIVERS_v10_shp.zip", HYDRORIVERS));
+    }
+
+    /** Karst aquifer polygons, the constraint generated caves are confined to. */
+    public static List<Download> karst() {
+        return List.of(new Download("karst", "WHYMAP_WOKAM_v1.zip", WOKAM));
     }
 
     /**

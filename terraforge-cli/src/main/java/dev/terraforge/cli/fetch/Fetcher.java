@@ -37,8 +37,8 @@ import java.util.function.Consumer;
 public final class Fetcher {
 
     /** Every dataset that can be fetched, in the order the sources are usually needed. */
-    public static final Set<String> DATASETS =
-            new LinkedHashSet<>(List.of("dem", "bathymetry", "landcover", "boundaries", "cities", "water"));
+    public static final Set<String> DATASETS = new LinkedHashSet<>(
+            List.of("dem", "bathymetry", "landcover", "boundaries", "cities", "water", "karst"));
 
     private final PrintStream out;
     private final PrintStream err;
@@ -120,6 +120,9 @@ public final class Fetcher {
         if (options.datasets().contains("water")) {
             downloads.addAll(SourceCatalog.water());
         }
+        if (options.datasets().contains("karst")) {
+            downloads.addAll(SourceCatalog.karst());
+        }
         return List.copyOf(downloads);
     }
 
@@ -136,6 +139,8 @@ public final class Fetcher {
         AtomicInteger unavailable = new AtomicInteger();
         AtomicInteger unreachable = new AtomicInteger();
         AtomicInteger cached = new AtomicInteger();
+        java.util.concurrent.atomic.AtomicReference<String> untrusted =
+                new java.util.concurrent.atomic.AtomicReference<>();
         AbsentRegistry registry = options.replace()
                 ? AbsentRegistry.disabled() : AbsentRegistry.open(sourceRoot);
         out.println("Would fetch into " + sourceRoot + ":");
@@ -162,7 +167,12 @@ public final class Fetcher {
                 size = client.size(download.uri());
             } catch (IOException exception) {
                 // One flaky HEAD in seventy thousand should not print a line of its own; the count
-                // at the end says how much of the estimate is missing.
+                // at the end says how much of the estimate is missing. A rejected certificate is a
+                // different animal -- it will fail every retry, on every file from that host, so it
+                // is worth a line even here.
+                if (!untrustedChainRemedy(exception).isEmpty()) {
+                    untrusted.compareAndSet(null, download.label());
+                }
                 unreachable.incrementAndGet();
                 progress.step();
                 return;
@@ -187,6 +197,13 @@ public final class Fetcher {
         if (unreachable.get() > 0) {
             out.printf(Locale.ROOT, "  %,d file(s) could not be reached; the real total is a little larger.%n",
                     unreachable.get());
+        }
+        if (untrusted.get() != null) {
+            out.println("  At least one of them (" + untrusted.get() + ") was refused at the TLS "
+                    + "handshake, not by the network:");
+            out.println("  this JDK does not trust the server's certificate chain. On Windows, re-run "
+                    + "with -Djavax.net.ssl.trustStoreType=Windows-ROOT;");
+            out.println("  otherwise import the issuing root into the JDK truststore. See DATA_SOURCES.md.");
         }
         long usable = usableSpace(sourceRoot);
         if (usable >= 0) {
@@ -266,7 +283,8 @@ public final class Fetcher {
             } catch (IOException | RuntimeException exception) {
                 failed.incrementAndGet();
                 synchronized (err) {
-                    err.println("  failed: " + download.label() + ": " + exception.getMessage());
+                    err.println("  failed: " + download.label() + ": " + exception.getMessage()
+                            + untrustedChainRemedy(exception));
                 }
                 if (consecutiveFailures.incrementAndGet() >= ABORT_AFTER_CONSECUTIVE_FAILURES
                         && aborted.compareAndSet(false, true)) {
@@ -366,6 +384,15 @@ public final class Fetcher {
 
     /** The gazetteer arrives zipped; the importer wants the tab-separated file inside it. */
     private void unpack(Download download, Path archive, boolean replace) throws IOException {
+        if (download.fileName().equals("WHYMAP_WOKAM_v1.zip")) {
+            // Every shapefile in the archive, because which layer holds the karst polygons is
+            // WOKAM's business and not a contract. The importer reads polygons and ignores the rest.
+            Path directory = archive.toAbsolutePath().getParent();
+            for (String name : ZipEntries.extractAll(archive, ".shp", directory, replace)) {
+                out.println("  extracted " + download.dataset() + "/" + name);
+            }
+            return;
+        }
         if (download.fileName().equals("HydroRIVERS_v10_shp.zip")) {
             for (String extension : List.of(".shp", ".dbf")) {
                 Path target = archive.resolveSibling("HydroRIVERS_v10" + extension);
@@ -404,10 +431,40 @@ public final class Fetcher {
         if (options.datasets().contains("boundaries") || options.datasets().contains("water")) {
             out.println("  Natural Earth (public domain), naturalearthdata.com.");
         }
+        if (options.datasets().contains("water")) {
+            out.println("  HydroRIVERS v1.0 (CC BY 4.0), (c) World Wildlife Fund, Inc. 2006-2013, "
+                    + "HydroSHEDS database, hydrosheds.org.");
+        }
         if (options.datasets().contains("cities")) {
             out.println("  GeoNames (CC BY 4.0), geonames.org.");
         }
+        if (options.datasets().contains("karst")) {
+            out.println("  Datenquelle: WHYMAP WOKAM, (c) BGR Berlin, IAH Reading, KIT Karlsruhe, "
+                    + "UNESCO Paris 2017.");
+        }
         out.println("See DATA_SOURCES.md for the exact wording each licence expects.");
+    }
+
+    /**
+     * The remedy for a rejected certificate chain, or an empty string for anything else.
+     *
+     * <p>A TLS failure is not an unreachable host, and reporting it as one sends the operator
+     * looking for a network problem they do not have. It is a live case rather than a hypothetical:
+     * BGR serves WOKAM from a chain rooted in HARICA's 2021 root, which Oracle JDK 21 does not carry
+     * even though every browser on the same machine trusts it.
+     */
+    static String untrustedChainRemedy(Throwable failure) {
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof javax.net.ssl.SSLHandshakeException) {
+                return System.lineSeparator()
+                        + "    The host is reachable; this JDK does not trust its certificate chain."
+                        + System.lineSeparator()
+                        + "    Re-run with -Djavax.net.ssl.trustStoreType=Windows-ROOT on Windows, or"
+                        + System.lineSeparator()
+                        + "    import the issuing root into the JDK truststore. See DATA_SOURCES.md.";
+            }
+        }
+        return "";
     }
 
     /** Validates a {@code --skip}/{@code --only} style dataset list. */
