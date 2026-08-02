@@ -104,6 +104,7 @@ public final class FileDemReader implements DemReader {
     public Optional<DemTile> read(DemTileKey key) throws IOException {
         ensureOpen();
         Path file = catalogue.get(key);
+
         if (file == null) {
             return Optional.empty();
         }
