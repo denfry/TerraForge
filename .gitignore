@@ -56,6 +56,7 @@ Desktop.ini
 /.windsurf/
 /.zed/
 /.playwright-mcp/
+/.worktrees/
 
 # codebase-index cache (machine-local; do not commit)
 .claude/cache/codebase-index/
