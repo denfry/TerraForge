@@ -1,7 +1,9 @@
 package dev.terraforge.plugin.world;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -17,5 +19,15 @@ class BukkitWorldsEditorTest {
         String output = new String(edit.replacement(), StandardCharsets.UTF_8);
         assertThat(output).contains("spawn:", "generator: \"Other\"", "keep-spawn-in-memory: true", "earth:", "generator: \"TerraForge\"");
         assertThat(Files.readString(file)).doesNotContain("TerraForge");
+    }
+
+    @Test void malformedYamlProducesNoWrite() throws Exception {
+        Path file = temporaryDirectory.resolve("bukkit.yml");
+        String malformed = "worlds:\n  spawn:\n  generator: [unterminated\n";
+        Files.writeString(file, malformed);
+
+        assertThatThrownBy(() -> new BukkitWorldsEditor().plan(file)).isInstanceOf(IOException.class);
+
+        assertThat(Files.readString(file)).isEqualTo(malformed);
     }
 }

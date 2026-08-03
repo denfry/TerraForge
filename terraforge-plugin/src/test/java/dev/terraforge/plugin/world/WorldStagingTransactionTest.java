@@ -20,6 +20,19 @@ class WorldStagingTransactionTest {
         assertThat(Files.readString(backups.resolve("000.bak"))).isEqualTo("level-name=spawn\n");
     }
 
+    @Test void retainsBackupsAfterCommitUntilTheManifestReachesReady() throws Exception {
+        Path target = temporaryDirectory.resolve("server.properties"); Files.writeString(target, "level-name=spawn\n");
+        Path backups = temporaryDirectory.resolve("backups");
+
+        new WorldStagingTransaction().commit(List.of(new PlannedEdit(target, Files.readAllBytes(target),
+                "level-name=earth\n".getBytes(StandardCharsets.UTF_8))), backups);
+
+        // Staging only reaches PENDING_RESTART here; nothing in the transaction deletes backups,
+        // so they must still be recoverable for as long as the manifest remains pre-READY.
+        assertThat(Files.readString(backups.resolve("000.bak"))).isEqualTo("level-name=spawn\n");
+        assertThat(Files.exists(backups.resolve("000.bak"))).isTrue();
+    }
+
     @Test void refusesToOverwriteAFileChangedAfterPlanning() throws Exception {
         Path target = temporaryDirectory.resolve("server.properties");
         byte[] plannedOriginal = "level-name=spawn\n".getBytes(StandardCharsets.UTF_8);

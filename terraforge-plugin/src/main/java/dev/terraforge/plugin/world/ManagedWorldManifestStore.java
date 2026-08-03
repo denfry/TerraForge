@@ -19,6 +19,7 @@ public final class ManagedWorldManifestStore {
         ManagedWorldManifest manifest = json.readValue(Files.readAllBytes(file), ManagedWorldManifest.class);
         validate(manifest); return Optional.of(manifest);
     }
+    public void delete() throws IOException { Files.deleteIfExists(file); }
     public void save(ManagedWorldManifest manifest) throws IOException {
         validate(manifest);
         Optional<ManagedWorldManifest> current = load();
