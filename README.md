@@ -84,20 +84,26 @@ so re-running fetches only what is missing. Every dataset is free to use and req
 which the command prints when it finishes; if you already have data, `prepare-region` still takes a
 source tree you assembled yourself.
 
-4. Register the generator in `bukkit.yml`:
-
-```yaml
-worlds:
-  earth:
-    generator: TerraForge
-```
-
-5. Start Paper and verify the setup:
+4. Start Paper, then stage and create the managed `earth` world:
 
 ```text
+/earth world plan      -- checks every prerequisite, writes nothing
+/earth world create    -- stages the world; requires a restart to take effect
+```
+
+Restart the server from your hosting panel, then verify:
+
+```text
+/earth world verify
+/earth doctor
 /earth info
 /earth whereami
 ```
+
+> [!IMPORTANT]
+> Paper 1.21.8+ only lets the **primary** world carry a non-vanilla dimension type, so `earth` must be
+> the server's primary world. It is created and staged by `/earth world create`, not by editing
+> `bukkit.yml` by hand or through Multiverse or any other multi-world plugin.
 
 TerraForge bundles no geodata, and the running server never downloads any: `setup` fetches the
 sources offline, on your machine, when you ask it to. The complete workflow, expected source layout
@@ -128,18 +134,22 @@ The root command is `/earth`; `/tf` and `/terraforge` are aliases.
 | `/earth info` | Show world, scale and projection information | Everyone |
 | `/earth whereami` | Show the current real-world location | Everyone |
 | `/earth coords <lat> <lon>` | Convert geographic coordinates | Everyone |
-| `/earth distance <lat> <lon>` | Measure geodesic distance | Everyone |
 | `/earth country <name>` | Inspect a country | Everyone |
 | `/earth city <name>` | Inspect a city | Everyone |
 | `/earth teleport city <name>` | Teleport to a prepared city | Operators |
 | `/earth teleport country <name>` | Teleport to a prepared country | Operators |
-| `/earth pregenerate <radius>` | Generate a bounded chunk region | Operators |
+| `/earth world plan\|create\|status\|verify\|abort` | Manage the primary Earth world's lifecycle | Operators |
+| `/earth pregenerate start\|full\|pause\|resume\|status\|cancel` | Bounded, checkpointed chunk pregeneration | Operators |
+| `/earth data status` | Report the prepared DEM inventory | Operators |
+| `/earth doctor` | Run independent health diagnostics | Operators |
+| `/earth performance` | Report live server and pregeneration health | Operators |
 | `/earth cache [clear]` | Inspect or invalidate caches | Operators |
 | `/earth towny refresh` | Backfill Towny geography | Operators |
 | `/earth debug [overlay]` | Inspect terrain sampling | Operators |
 | `/earth reload` | Validate and reload safe runtime state | Operators |
 
-See [`plugin.yml`](terraforge-plugin/src/main/resources/plugin.yml) for the exact permission nodes.
+See [`plugin.yml`](terraforge-plugin/src/main/resources/plugin.yml) for the exact permission nodes
+and [docs/commands.md](docs/commands.md) for full grammar and behaviour of each subcommand.
 
 ## Architecture
 
@@ -183,7 +193,8 @@ material inside this repository for contributors browsing the source.
 
 | Guide | Contents |
 |---|---|
-| [Installation](docs/installation.md) | Paper setup, data preparation and world creation |
+| [Installation](docs/installation.md) | Paper setup, data preparation and managed world creation |
+| [Commands](docs/commands.md) | Every `/earth` and CLI command, in full |
 | [Configuration](docs/configuration.md) | Every `terraforge.yml` option |
 | [Data sources](docs/data-sources.md) | Recommended datasets and trade-offs |
 | [DEM pipeline](docs/dem.md) | Elevation preparation and `.tfdem` |

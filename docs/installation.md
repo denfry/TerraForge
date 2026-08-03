@@ -146,23 +146,52 @@ Verify before starting:
 java -jar terraforge-cli.jar info -c server/plugins/TerraForge/terraforge.yml
 ```
 
-## 3. Create the world
+## 3. Create the managed Earth world
 
-Add to `bukkit.yml`:
+Paper 1.21.8+ only lets the **primary** world (`level-name` in `server.properties`, the first entry
+in `bukkit.yml`) carry a non-vanilla dimension type. TerraForge's world height comes from a datapack
+that overrides `minecraft:overworld`, so `earth` **must be the primary world** — it cannot be created
+as a secondary world through Multiverse or any other multi-world plugin, and there is no supported way
+to run it as anything but the server's main world. TerraForge owns this staging itself: do not add
+`earth` to `bukkit.yml` by hand and do not copy a datapack into a world directory yourself.
 
-```yaml
-worlds:
-  earth:
-    generator: TerraForge
-```
+> [!IMPORTANT]
+> `/earth world create` refuses outright if a `world/earth` directory already exists — TerraForge
+> never overwrites or deletes a world it did not stage. If you have an old `earth` world you want to
+> keep, move or rename its directory before continuing.
 
-Or, with Multiverse:
+The safe workflow, in order:
 
-```
-/mv create earth normal -g TerraForge
-```
+1. Install TerraForge on a stopped/clean Paper server.
+2. Start once and prepare/import data (see steps 1–2 above).
+3. Run `/earth world plan` — checks Paper support, the configured world name, that `earth` is not
+   already loaded, that no `world/earth` directory exists, prepared DEM availability and free disk
+   space. Nothing is written yet.
+4. Run `/earth world create` **only after every check in `plan` passes**. This stages
+   `server.properties`, `bukkit.yml`, `paper-world.yml` and the height datapack behind a recoverable
+   transaction, and writes a manifest in state `PENDING_RESTART`. It does not create the world itself.
+5. Restart the server from the hosting panel (not `/reload` or `/restart` inside a plugin — a real
+   process restart is what lets Paper read the staged dimension-type datapack before any plugin
+   loads).
+6. Run `/earth world verify` and `/earth doctor` to confirm the live world matches what was staged.
+7. Start a small block-radius pregeneration (`/earth pregenerate start 200`, then
+   `/earth pregenerate resume`) and inspect `/earth performance` before committing to more.
+8. Use `/earth pregenerate full confirm` only once you have confirmed adequate disk space and time —
+   see [pregeneration.md](pregeneration.md) for sizing.
 
-The world name must match `world.name` in `terraforge.yml`.
+A few things TerraForge deliberately does **not** do during this workflow:
+
+- **`spawn` is owned by another plugin.** TerraForge never edits spawn location, spawn protection or
+  any spawn-related setting.
+- **Cancelling a pregeneration job never deletes chunks.** `/earth pregenerate cancel` only stops
+  scheduling new chunks; everything already generated stays on disk.
+- **A restart always leaves pregeneration paused.** A job that was `RUNNING` or auto-paused when the
+  server stopped comes back as `PAUSED` after restart; resuming is always a manual
+  `/earth pregenerate resume`, never automatic.
+- **Watchdog settings are untouched.** TerraForge does not modify `spigot.yml`/`paper-global.yml`
+  watchdog timeouts.
+- **Backups are not deleted for you.** Anything under `plugins/TerraForge/managed-world-backups/`
+  stays on disk until you remove it yourself, once you are confident the staged world is correct.
 
 ## 4. Verify
 
@@ -196,3 +225,41 @@ required — a missing plugin is logged and skipped. See [towny.md](towny.md) an
 
 Do **not** change `scale`, `earth.origin`, `projection` or `terrain.*` on a world that already has
 generated chunks — new chunks would not line up with old ones.
+
+## Recovery
+
+The managed-world lifecycle is `ABSENT → PENDING_RESTART → CREATING → READY`, with `INVALID` reachable
+from any of the last three and terminal once reached (no further transition out of it). State lives in
+`plugins/TerraForge/managed-world.json`; pregeneration progress lives separately in
+`plugins/TerraForge/pregeneration.json`. Staging backups of any file it overwrote go to
+`plugins/TerraForge/managed-world-backups/`.
+
+**`/earth world abort`** only works while the state is `PENDING_RESTART` — i.e. after `world create`
+staged the world but before the server has restarted into it. It deletes the staged `world/earth`
+directory and the manifest, but only after confirming every file inside `world/earth` is one
+TerraForge itself staged (the staging marker plus the exact files recorded in the manifest); if it
+finds `level.dat`, `region/`, `entities/` or `poi/` — anything that looks like a real, played-in world
+— it refuses and leaves everything untouched. Once the state has moved past `PENDING_RESTART`, `abort`
+no longer applies; recovering a bad `CREATING`/`READY` world means fixing the underlying problem (see
+below) or manually stopping the server, removing `world/earth` and the manifest by hand, and starting
+the workflow over.
+
+**`INVALID`** means TerraForge staged and restarted into a world, but the post-restart verification
+(the live world's name, whether it is the primary world, its generator, its min/max height, whether
+the height datapack is enabled, and whether the live config/DEM fingerprints match what was staged)
+failed at least one check. `/earth doctor` surfaces this as a failed `managed-world` check
+(`not verified; managed operations stay disabled`); the server log records every individual
+verification failure at startup with the `[TerraForge]` prefix. `INVALID` is terminal — TerraForge
+will not attempt to re-verify or repair it automatically. Diagnose from the log (a mismatched
+fingerprint usually means `terraforge.yml` or the prepared DEM changed after staging; a wrong
+generator or non-primary world usually means another plugin or a manual `bukkit.yml` edit interfered),
+fix the cause, then stop the server, remove the stale `managed-world.json` and the `earth` world
+directory, and run the workflow again from `/earth world plan`.
+
+**Why TerraForge never deletes an existing `earth` directory automatically:** both the planning check
+(`existing-world`) and the staging transaction refuse outright the moment `world/earth` exists on disk
+— this is a hard safety invariant, not a convenience check that can be bypassed with a flag. An
+operator who wants to replace an existing `earth` world must move or rename that directory themselves
+first; TerraForge only ever deletes a directory it can prove it staged itself (see `abort` above), and
+that proof requires the manifest and the `PENDING_RESTART` state, neither of which exist for a world
+TerraForge did not create.

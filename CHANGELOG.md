@@ -11,6 +11,19 @@ format. Both are stated explicitly per release, because either one means regener
 
 ### Added
 
+- Managed Earth world lifecycle: `/earth world plan|create|status|verify|abort` stages the primary
+  `earth` world (server.properties, bukkit.yml, paper-world.yml and the height datapack) behind a
+  recoverable transaction, verifies it against the live server after restart, and refuses to overwrite
+  or delete an existing `earth` world directory. Replaces the previous Multiverse / manual
+  datapack-copy workflow, which cannot work on Paper 1.21.8+: only the primary world may carry a
+  non-vanilla dimension type. See [installation.md](docs/installation.md).
+- Bounded pregeneration lifecycle: `/earth pregenerate start|full|pause|resume|status|cancel`, with
+  checkpointing to `plugins/TerraForge/pregeneration.json`, config/data fingerprint checks on resume,
+  and automatic pause/resume driven by live TPS, MSPT, disk space and online-player policy
+  (`pregeneration.*` in `terraforge.yml`). A restart always leaves a job paused for manual resume.
+  Cancelling a job never deletes chunks already generated.
+- `/earth data status`, `/earth doctor` and `/earth performance` — prepared-data inventory, independent
+  health diagnostics and live server/pregeneration health, respectively.
 - `terraforge setup`: one command that creates the plugin data directory, downloads every source
   dataset a bounding box needs, prepares it and validates the result. Preparing a region no longer
   starts with five browser tabs and a manual directory layout.

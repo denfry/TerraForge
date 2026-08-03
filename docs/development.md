@@ -37,6 +37,13 @@ Enforced by module dependencies; breaking one is a compile error, not a review c
 - Paper types appear only in `generator`, `plugin`, `towny`, `bluemap`
 - Towny and BlueMap APIs stay inside their own modules and are `compileOnly`
 
+`dev.terraforge.plugin.world` (the managed Earth world lifecycle: plan/stage/verify/abort) and
+`dev.terraforge.plugin.pregen` (bounded, checkpointed pregeneration) follow the same rule as any other
+Bukkit-dependent code: the state machines, checks and health policy are plain Java, testable without a
+running server, and only the thin adapters (`BukkitManagedWorldEnvironment`, `PaperPregenerationAdapter`)
+touch `org.bukkit`. See [installation.md](installation.md) for the operator-facing workflow and
+[commands.md](commands.md) for the command surface these packages back.
+
 ## Adding things
 
 **A projection** — implement `Projection`, register it in `ProjectionRegistry`, document its

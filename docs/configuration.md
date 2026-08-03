@@ -92,6 +92,21 @@ Vegetation is natural only. No villages, huts or man-made objects exist in any c
 | `natural-only` | `true` | no structures of any kind. Recommended, and the default |
 | `worker-threads` | `4` | threads for asynchronous chunk data preparation |
 
+## `pregeneration`
+
+| Key | Default | Meaning |
+|---|---|---|
+| `max-in-flight` | `1` | maximum chunks requested concurrently. Never unbounded by design |
+| `pause-when-players-online` | `true` | auto-pause the job while any player is online |
+| `minimum-tps` | `18.0` | auto-pause below this server TPS |
+| `maximum-mspt` | `40.0` | auto-pause above this average tick time (ms) |
+| `stable-resume-seconds` | `15` | how long health must stay good before an auto-paused job resumes on its own |
+| `minimum-free-disk-gb` | `10` | auto-pause (and refuse `/earth pregenerate resume`) below this usable disk space; also the minimum required for `/earth world plan`/`create` |
+| `checkpoint-every-chunks` | `128` | how often progress is written to `plugins/TerraForge/pregeneration.json` |
+
+Auto-pause and auto-resume only apply to a job already `RUNNING`; a restart never resumes a job by
+itself — see [pregeneration.md](pregeneration.md) and [installation.md](installation.md).
+
 ## `infrastructure`
 
 All six keys (`roads`, `buildings`, `railways`, `bridges`, `airports`, `power-lines`) default to

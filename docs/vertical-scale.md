@@ -68,17 +68,19 @@ loads. A generator cannot raise it from inside, and a world created without the 
 vanilla's 384 blocks — at which point `min-y` and `max-y` in `terraforge.yml` are aspirations that
 the chunk data clamps away.
 
-`init` and `setup` write the pack whenever the profile is not vanilla height:
+`init` and `setup` write a reference copy of the pack under `plugins/TerraForge/datapack/` whenever
+the profile is not vanilla height, so it exists on disk before any world does. For the managed
+`earth` world, though, you never copy it by hand: `/earth world create` renders this same pack from
+the live `terraforge.yml` and stages it directly into `world/earth/datapacks/terraforge-earth-height/`
+as part of the staging transaction described in [installation.md](installation.md), and the restart
+that follows is what makes Paper pick it up. It overrides `minecraft:overworld` rather than adding a
+dimension, because the world TerraForge generates *is* the overworld; every other value in it is
+vanilla's, so nothing but the height changes.
 
-```
-plugins/TerraForge/datapack/terraforge-world-height/
-├── pack.mcmeta
-└── data/minecraft/dimension_type/overworld.json
-```
-
-Copy that directory into `<world>/datapacks/` and start the server. It overrides
-`minecraft:overworld` rather than adding a dimension, because the world TerraForge generates *is*
-the overworld; every other value in it is vanilla's, so nothing but the height changes.
+Manual copying is a fallback only for building or inspecting a world outside the managed workflow
+(for example, a throwaway local test world); the primary `earth` world must go through
+`/earth world create` because Paper 1.21.8+ only lets the primary world carry a non-vanilla
+dimension type.
 
 ## Checking it
 

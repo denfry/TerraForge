@@ -99,3 +99,17 @@ Common findings and their fixes:
 
 The cheapest chunk is one generated before a player asks for it. See
 [pregeneration.md](pregeneration.md).
+
+## `/earth performance`
+
+```
+/earth performance
+```
+
+Requires `terraforge.command.performance`. Reports one live snapshot: current TPS and MSPT, online
+player count, usable disk space, and — when a pregeneration controller is active — its state and
+in-flight chunk count. This is the same health data the pregeneration auto-pause/resume policy reads
+(`pregeneration.minimum-tps`, `pregeneration.maximum-mspt`, `pregeneration.minimum-free-disk-gb`), so
+it doubles as a quick sanity check before starting a large pregeneration job: run it, confirm TPS/MSPT
+are stable and disk is well above the reserve, then run `/earth pregenerate start` or
+`/earth pregenerate full confirm`.

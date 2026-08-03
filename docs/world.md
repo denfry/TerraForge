@@ -116,7 +116,8 @@ Pregenerate the areas players actually start in:
 
 ```
 /earth teleport city Berlin
-/earth pregenerate 500
+/earth pregenerate start 500
+/earth pregenerate resume
 ```
 
 Everything else generates when somebody goes there, which is what the deterministic pipeline is for:

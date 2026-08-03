@@ -6,29 +6,40 @@ gap is far better found during pregeneration than when a player walks into it.
 ## In-game
 
 ```
-/earth pregenerate <radius-chunks>
+/earth pregenerate start <radius-blocks> [center-x center-z]
+/earth pregenerate full confirm
+/earth pregenerate pause
+/earth pregenerate resume
+/earth pregenerate status
+/earth pregenerate cancel
 ```
 
-Requires `terraforge.command.pregenerate`. The radius is in chunks around the issuing player's
-current chunk, from `0` to `32` (at most 4,225 chunks). Only one TerraForge job can run at once;
-use `/earth pregenerate status` to inspect it or `/earth pregenerate cancel` to stop scheduling new
-chunks. The job requests one chunk per tick so it does not deliberately saturate the server.
+Requires `terraforge.command.pregenerate` and a managed Earth world in state `READY` (see
+[installation.md](installation.md)). `start` takes a block radius and an optional block centre
+(default `0, 0`); `full confirm` pregenerates the entire configured region and requires the literal
+word `confirm`. Both **create the job paused** — run `/earth pregenerate resume` to actually begin
+scheduling chunks. Only one job can exist at a time; starting another while one is active is
+rejected with a specific reason instead of silently queuing.
 
-Progress is reported live:
+`/earth pregenerate resume` re-checks, at the moment you resume: that the checkpointed
+config/DEM-data fingerprint still matches the live server (a config or data change since the job was
+created blocks resume until you cancel and start a fresh job), that DEM coverage is currently
+available, and that usable disk space is still above `pregeneration.minimum-free-disk-gb`.
 
-```
-Preparing:
-[██████████████░░░░] 72%
+`/earth pregenerate status` reports job state, progress (`completed`/`skipped`/`failed`/`total`/
+in-flight), the region and the checkpoint age, plus live TPS, MSPT, usable disk and the configured
+online-player policy.
 
-Chunks:
-183,200 / 254,000
+`/earth pregenerate cancel` stops scheduling new chunks; it **never deletes chunks already
+generated**.
 
-ETA:
-00:04:37
-```
-
-Pregeneration runs on the generator worker pool, yields to player-driven chunk loads, and can be
-stopped and resumed — progress is checkpointed, so a restart does not start over.
+Pregeneration runs on the generator worker pool with a bounded in-flight queue
+(`pregeneration.max-in-flight`, default `1` — never unbounded), yields to player-driven chunk loads,
+and auto-pauses when TPS/MSPT/disk drop below the configured thresholds or a player comes online (if
+`pregeneration.pause-when-players-online` is set). Progress is checkpointed to
+`plugins/TerraForge/pregeneration.json` every `pregeneration.checkpoint-every-chunks` chunks. A
+restart always leaves a job that was `RUNNING` or auto-paused as `PAUSED` on load — resuming after a
+restart is always a manual step, never automatic.
 
 ## Planning with the CLI
 
@@ -61,6 +72,11 @@ Nothing was written. Run the generation in-server:
   /earth pregenerate <radius-chunks>   (stand near chunk 0, 0)
 ```
 
+> [!NOTE]
+> That last line is the CLI's own suggested command and still shows the pre-managed-world grammar.
+> The current in-game command is `/earth pregenerate start <radius-blocks> [x z]`, followed by
+> `/earth pregenerate resume` — see [In-game](#in-game) above.
+
 The command computes and validates the chunk set — count, region files, disk estimate, DEM coverage
 — and **never writes anything**, which is what makes it safe to point at a live server's data
 directory. Actual world writing is done by the server, the only safe writer of region files.
@@ -84,9 +100,12 @@ chunks, a few minutes of work. Sizes scale with the square of `blocks-per-km`:
 
 1. Prepare the data (`prepare-region`).
 2. `terraforge info` — confirm the block extent is what you expect.
-3. Pregenerate a small radius and inspect the terrain in-game.
-4. Pregenerate the full region.
-5. Open the server.
+3. Create the managed Earth world (`/earth world plan` then `/earth world create`, restart, then
+   `/earth world verify` and `/earth doctor`) — see [installation.md](installation.md).
+4. `/earth pregenerate start <small-radius>` then `/earth pregenerate resume`; inspect the terrain
+   and `/earth performance`.
+5. `/earth pregenerate full confirm` once disk and time are adequate.
+6. Open the server to players.
 
 ## Missing data during pregeneration
 
