@@ -58,6 +58,59 @@ class BootstrapDatapackServiceTest {
                 mock(DatapackRegistrar.class))).isInstanceOf(java.io.IOException.class);
     }
 
+    @Test
+    void rejectsPackWithExtraFilesBeyondTheExpectedSet() throws Exception {
+        VerticalProfile profile = new VerticalProfile(0, -512, 512, 20.0);
+        var rendered = writePack(profile);
+        Path smuggled = serverRoot.resolve(PACK_RELATIVE_ROOT)
+                .resolve("data/minecraft/tags/function/load.json");
+        Files.createDirectories(smuggled.getParent());
+        Files.writeString(smuggled, "{\"values\":[\"malicious:evil\"]}");
+        new ManagedWorldManifestStore(pluginDataDirectory()).save(new ManagedWorldManifest(1,
+                ManagedWorldState.PENDING_RESTART, "earth", -512, 512, HASH, HASH,
+                rendered.fingerprint(), ownedFiles(rendered), "pending restart"));
+
+        assertThatThrownBy(() -> new BootstrapDatapackService().discover(pluginDataDirectory(),
+                mock(DatapackRegistrar.class))).isInstanceOf(java.io.IOException.class);
+    }
+
+    @Test
+    void rejectsManifestInInvalidState() throws Exception {
+        VerticalProfile profile = new VerticalProfile(0, -512, 512, 20.0);
+        var rendered = writePack(profile);
+        var store = new ManagedWorldManifestStore(pluginDataDirectory());
+        store.save(new ManagedWorldManifest(1, ManagedWorldState.PENDING_RESTART, "earth", -512, 512, HASH, HASH,
+                rendered.fingerprint(), ownedFiles(rendered), "pending restart"));
+        store.save(new ManagedWorldManifest(1, ManagedWorldState.INVALID, "earth", -512, 512, HASH, HASH,
+                rendered.fingerprint(), ownedFiles(rendered), "corrupted"));
+
+        assertThatThrownBy(() -> new BootstrapDatapackService().discover(pluginDataDirectory(),
+                mock(DatapackRegistrar.class))).isInstanceOf(java.io.IOException.class);
+    }
+
+    @Test
+    void rejectsMalformedManifestJson() throws Exception {
+        Path manifestFile = pluginDataDirectory().resolve("managed-world.json");
+        Files.createDirectories(manifestFile.getParent());
+        Files.writeString(manifestFile, "{ not valid json ");
+
+        assertThatThrownBy(() -> new BootstrapDatapackService().discover(pluginDataDirectory(),
+                mock(DatapackRegistrar.class))).isInstanceOf(java.io.IOException.class);
+    }
+
+    @Test
+    void rejectsMissingPackMcmeta() throws Exception {
+        VerticalProfile profile = new VerticalProfile(0, -512, 512, 20.0);
+        var rendered = writePack(profile);
+        Files.delete(serverRoot.resolve(PACK_RELATIVE_ROOT).resolve("pack.mcmeta"));
+        new ManagedWorldManifestStore(pluginDataDirectory()).save(new ManagedWorldManifest(1,
+                ManagedWorldState.PENDING_RESTART, "earth", -512, 512, HASH, HASH,
+                rendered.fingerprint(), ownedFiles(rendered), "pending restart"));
+
+        assertThatThrownBy(() -> new BootstrapDatapackService().discover(pluginDataDirectory(),
+                mock(DatapackRegistrar.class))).isInstanceOf(java.io.IOException.class);
+    }
+
     private TerraForgeDatapack.RenderedPack writePack(VerticalProfile profile) throws Exception {
         var rendered = TerraForgeDatapack.render(profile);
         Path pack = serverRoot.resolve(PACK_RELATIVE_ROOT);
