@@ -2,11 +2,14 @@ package dev.terraforge.plugin.world;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import dev.terraforge.core.config.VerticalProfile;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class WorldCreationPlanTest {
+    private static final String HASH = "a".repeat(64);
+
     @TempDir Path temporaryDirectory;
     @Test void returnsAllPreflightFailuresWithoutWriting() throws Exception {
         java.nio.file.Files.createDirectories(temporaryDirectory.resolve("worlds/earth"));
@@ -15,7 +18,8 @@ class WorldCreationPlanTest {
             public boolean hasPreparedDem() { return false; } public Path serverRoot() { return temporaryDirectory; }
             public Path worldContainer() { return temporaryDirectory.resolve("worlds"); } public long usableDiskBytes(Path path) { return 0; }
         };
-        WorldCreationPlan plan = new ManagedWorldService().plan(environment, "spawn", 10);
+        WorldCreationPlan plan = new ManagedWorldService().plan(environment, "spawn", 10, VerticalProfile.regional(),
+                HASH, HASH, new PaperWorldSettingsEditor.ChunkSettings(6000, 24, "10s"));
         assertThat(plan.executable()).isFalse();
         assertThat(plan.checks()).allMatch(check -> !check.passed());
     }
