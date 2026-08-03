@@ -260,6 +260,37 @@ class PregenerationControllerTest {
         }
     }
 
+    @Test
+    void inlineExecutorWithAlreadyCompletedFutureDoesNotDoubleCompleteTheJob() {
+        // Regression test: with a direct (inline) callbackExecutor, whenCompleteAsync on an
+        // already-completed future runs onChunkSucceeded synchronously, re-entering pump() while
+        // the outer pump() frame is still on the stack. For a radius-0 spec (one chunk), the
+        // nested pump() drains the job and calls completeJob(); the fix must stop the outer loop
+        // from also seeing "past the end" and calling completeJob() a second time.
+        var port = new ChunkGenerationPort() {
+            @Override
+            public boolean isChunkGenerated(int chunkX, int chunkZ) {
+                return false;
+            }
+
+            @Override
+            public CompletableFuture<Boolean> loadOrGenerate(int chunkX, int chunkZ) {
+                return CompletableFuture.completedFuture(true);
+            }
+        };
+        PregenerationCheckpoint initial = new PregenerationCheckpoint(PregenerationCheckpoint.SCHEMA_VERSION,
+                PregenerationSpec.around(0, 0, 0), 0, 0, 0, 0, PregenerationState.PAUSED, "test", HASH, HASH, 0);
+        var controller = new PregenerationController(port, healthyPolicy(),
+                PregenerationControllerTest::healthySnapshot, store(), Runnable::run,
+                Clock.fixed(Instant.EPOCH, ZoneOffset.UTC), 1, 128, initial, LOGGER);
+
+        controller.resume();
+
+        var status = controller.status().orElseThrow();
+        assertThat(status.state()).isEqualTo(PregenerationState.COMPLETED);
+        assertThat(status.completed()).isEqualTo(1);
+    }
+
     private static void await(CountDownLatch latch) {
         try {
             latch.await();

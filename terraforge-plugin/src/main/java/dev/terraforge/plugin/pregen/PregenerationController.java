@@ -146,6 +146,12 @@ public final class PregenerationController {
             return;
         }
         while (inFlight.get() < maxInFlight) {
+            if (checkpoint.state() != PregenerationState.RUNNING) {
+                // A reentrant pump() from a synchronously-completed chunk future (inline
+                // callbackExecutor) may have already paused, auto-paused, or completed the job
+                // while this frame was still on the stack. Don't act on stale state.
+                return;
+            }
             if (checkpoint.cursorOrdinal() >= checkpoint.spec().totalChunks()) {
                 completeJob();
                 return;
