@@ -1,0 +1,254 @@
+package dev.terraforge.plugin.pregen;
+
+import java.io.IOException;
+import java.time.Clock;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
+import java.util.logging.Logger;
+
+/**
+ * Bounded, durable controller for one pregeneration job.
+ *
+ * <p>Every mutation of the job's in-memory state -- dispatch, completion handling, and the
+ * pause/resume/cancel admin operations -- runs as a task submitted to a single {@code
+ * callbackExecutor}. That executor is the one serialization boundary this class relies on: as long
+ * as it runs submitted tasks one at a time (a single Bukkit-main-thread executor in production, a
+ * direct or single-thread executor in tests), dispatch can never race a completion callback or an
+ * admin call, regardless of which thread invoked them or how many chunk futures are outstanding.
+ *
+ * <p>{@link #status()} and {@link #inFlightCount()} are the only members read off the executor
+ * thread; the checkpoint reference is {@code volatile} and the in-flight counter is atomic so those
+ * reads are safe without needing the executor themselves.
+ */
+public final class PregenerationController {
+
+    private final ChunkGenerationPort port;
+    private final ServerHealthPolicy healthPolicy;
+    private final Supplier<ServerHealthSnapshot> snapshotSupplier;
+    private final PregenerationCheckpointStore store;
+    private final Executor callbackExecutor;
+    private final Clock clock;
+    private final int maxInFlight;
+    private final int checkpointEveryChunks;
+    private final Logger logger;
+
+    private final AtomicInteger inFlight = new AtomicInteger();
+    private final AtomicBoolean stopped = new AtomicBoolean();
+
+    /** Confined to {@code callbackExecutor}; not read there only via the volatile publication below. */
+    private volatile PregenerationCheckpoint checkpoint;
+    private long terminalSinceCheckpoint;
+
+    public PregenerationController(ChunkGenerationPort port, ServerHealthPolicy healthPolicy,
+            Supplier<ServerHealthSnapshot> snapshotSupplier, PregenerationCheckpointStore store,
+            Executor callbackExecutor, Clock clock, int maxInFlight, int checkpointEveryChunks,
+            PregenerationCheckpoint initialCheckpoint, Logger logger) {
+        if (maxInFlight < 1) {
+            throw new IllegalArgumentException("maxInFlight must be at least one");
+        }
+        if (checkpointEveryChunks < 1) {
+            throw new IllegalArgumentException("checkpointEveryChunks must be at least one");
+        }
+        this.port = port;
+        this.healthPolicy = healthPolicy;
+        this.snapshotSupplier = snapshotSupplier;
+        this.store = store;
+        this.callbackExecutor = callbackExecutor;
+        this.clock = clock;
+        this.maxInFlight = maxInFlight;
+        this.checkpointEveryChunks = checkpointEveryChunks;
+        this.checkpoint = initialCheckpoint;
+        this.logger = logger;
+    }
+
+    /** Current durable state, safe to read from any thread. Empty until a job has been created. */
+    public Optional<PregenerationCheckpoint> status() {
+        return Optional.ofNullable(checkpoint);
+    }
+
+    /** Chunk futures currently outstanding. Never exceeds the configured maximum. */
+    public int inFlightCount() {
+        return inFlight.get();
+    }
+
+    /** Creates a fresh job, replacing any completed or cancelled one. Starts paused. */
+    public void begin(PregenerationSpec spec, String configFingerprint, String dataFingerprint) {
+        callbackExecutor.execute(() -> {
+            if (checkpoint != null && isActive(checkpoint.state())) {
+                return;
+            }
+            checkpoint = new PregenerationCheckpoint(PregenerationCheckpoint.SCHEMA_VERSION, spec, 0, 0, 0, 0,
+                    PregenerationState.PAUSED, "created", configFingerprint, dataFingerprint, clock.millis());
+            terminalSinceCheckpoint = 0;
+            saveCheckpoint();
+        });
+    }
+
+    /** Manually resumes a paused or auto-paused job and attempts to fill dispatch slots. */
+    public void resume() {
+        callbackExecutor.execute(() -> {
+            if (checkpoint == null || !checkpoint.state().mayTransitionTo(PregenerationState.RUNNING)) {
+                return;
+            }
+            checkpoint = checkpoint.withState(PregenerationState.RUNNING, "resumed", clock.millis());
+            saveCheckpoint();
+            pump();
+        });
+    }
+
+    /** Manually pauses a running job. In-flight futures still complete; their callbacks just stop re-dispatching. */
+    public void pause(String reason) {
+        callbackExecutor.execute(() -> {
+            if (checkpoint == null || !checkpoint.state().mayTransitionTo(PregenerationState.PAUSED)) {
+                return;
+            }
+            checkpoint = checkpoint.withState(PregenerationState.PAUSED, reason, clock.millis());
+            saveCheckpoint();
+        });
+    }
+
+    /** Cancels the job and deletes its durable checkpoint. Never touches already-generated world chunks. */
+    public void cancel() {
+        callbackExecutor.execute(() -> {
+            if (checkpoint == null || !checkpoint.state().mayTransitionTo(PregenerationState.CANCELLED)) {
+                return;
+            }
+            checkpoint = checkpoint.withState(PregenerationState.CANCELLED, "cancelled", clock.millis());
+            try {
+                store.delete();
+            } catch (IOException exception) {
+                logger.warning("Cannot delete pregeneration checkpoint: " + exception.getMessage());
+            }
+        });
+    }
+
+    /**
+     * Stops dispatching new work and writes one final checkpoint. Does not wait for outstanding chunk
+     * futures -- their completions, if they still arrive, are handled normally by whatever executor
+     * survives the shutdown.
+     */
+    public void shutdown() {
+        stopped.set(true);
+        callbackExecutor.execute(() -> {
+            if (checkpoint != null && isActive(checkpoint.state())) {
+                saveCheckpoint();
+            }
+        });
+    }
+
+    /** Fills dispatch slots up to {@code maxInFlight}, consulting health before every single dispatch. */
+    private void pump() {
+        if (stopped.get() || checkpoint == null || checkpoint.state() != PregenerationState.RUNNING) {
+            return;
+        }
+        while (inFlight.get() < maxInFlight) {
+            if (checkpoint.cursorOrdinal() >= checkpoint.spec().totalChunks()) {
+                completeJob();
+                return;
+            }
+            ServerHealthPolicy.HealthDecision decision =
+                    healthPolicy.evaluate(snapshotSupplier.get(), clock.instant());
+            if (!decision.mayDispatch()) {
+                autoPause(decision.reason());
+                return;
+            }
+            dispatchNext();
+        }
+    }
+
+    private void dispatchNext() {
+        SpiralCursor.Chunk target = SpiralCursor.at(checkpoint.cursorOrdinal());
+        advanceCursor();
+        if (port.isChunkGenerated(target.x(), target.z())) {
+            checkpoint = new PregenerationCheckpoint(checkpoint.schemaVersion(), checkpoint.spec(),
+                    checkpoint.cursorOrdinal(), checkpoint.completed(), checkpoint.skipped() + 1,
+                    checkpoint.failed(), checkpoint.state(), checkpoint.pauseReason(),
+                    checkpoint.configFingerprint(), checkpoint.dataFingerprint(), clock.millis());
+            recordTerminal();
+            return;
+        }
+        inFlight.incrementAndGet();
+        CompletableFuture<Boolean> future;
+        try {
+            future = port.loadOrGenerate(target.x(), target.z());
+        } catch (RuntimeException exception) {
+            inFlight.decrementAndGet();
+            onChunkFailed(exception);
+            return;
+        }
+        future.whenCompleteAsync((success, error) -> {
+            inFlight.decrementAndGet();
+            if (error != null) {
+                onChunkFailed(error);
+            } else if (Boolean.FALSE.equals(success)) {
+                onChunkFailed(new IllegalStateException("chunk generation reported failure at "
+                        + target.x() + ", " + target.z()));
+            } else {
+                onChunkSucceeded();
+            }
+        }, callbackExecutor);
+    }
+
+    private void onChunkSucceeded() {
+        checkpoint = new PregenerationCheckpoint(checkpoint.schemaVersion(), checkpoint.spec(),
+                checkpoint.cursorOrdinal(), checkpoint.completed() + 1, checkpoint.skipped(),
+                checkpoint.failed(), checkpoint.state(), checkpoint.pauseReason(),
+                checkpoint.configFingerprint(), checkpoint.dataFingerprint(), clock.millis());
+        recordTerminal();
+        pump();
+    }
+
+    private void onChunkFailed(Throwable error) {
+        logger.warning("Pregeneration chunk failed: " + error.getMessage());
+        checkpoint = new PregenerationCheckpoint(checkpoint.schemaVersion(), checkpoint.spec(),
+                checkpoint.cursorOrdinal(), checkpoint.completed(), checkpoint.skipped(),
+                checkpoint.failed() + 1, checkpoint.state(), checkpoint.pauseReason(),
+                checkpoint.configFingerprint(), checkpoint.dataFingerprint(), clock.millis());
+        saveCheckpoint();
+        autoPause("chunk-generation-failed");
+    }
+
+    private void completeJob() {
+        checkpoint = checkpoint.withState(PregenerationState.COMPLETED, "all chunks processed", clock.millis());
+        saveCheckpoint();
+    }
+
+    private void autoPause(String reason) {
+        if (checkpoint.state().mayTransitionTo(PregenerationState.AUTO_PAUSED)) {
+            checkpoint = checkpoint.withState(PregenerationState.AUTO_PAUSED, reason, clock.millis());
+            saveCheckpoint();
+        }
+    }
+
+    private void advanceCursor() {
+        checkpoint = new PregenerationCheckpoint(checkpoint.schemaVersion(), checkpoint.spec(),
+                checkpoint.cursorOrdinal() + 1, checkpoint.completed(), checkpoint.skipped(),
+                checkpoint.failed(), checkpoint.state(), checkpoint.pauseReason(),
+                checkpoint.configFingerprint(), checkpoint.dataFingerprint(), clock.millis());
+    }
+
+    private void recordTerminal() {
+        terminalSinceCheckpoint++;
+        if (terminalSinceCheckpoint >= checkpointEveryChunks) {
+            saveCheckpoint();
+        }
+    }
+
+    private void saveCheckpoint() {
+        try {
+            store.save(checkpoint);
+        } catch (IOException exception) {
+            logger.warning("Cannot save pregeneration checkpoint: " + exception.getMessage());
+        }
+        terminalSinceCheckpoint = 0;
+    }
+
+    private static boolean isActive(PregenerationState state) {
+        return state == PregenerationState.RUNNING || state == PregenerationState.PAUSED
+                || state == PregenerationState.AUTO_PAUSED;
+    }
+}

@@ -30,6 +30,11 @@ import dev.terraforge.plugin.command.EarthCommandRouter;
 import dev.terraforge.plugin.command.PaperEarthCommand;
 import dev.terraforge.plugin.command.WorldCommandContext;
 import dev.terraforge.plugin.command.WorldCommandHandler;
+import dev.terraforge.plugin.pregen.PaperPregenerationAdapter;
+import dev.terraforge.plugin.pregen.PregenerationCheckpoint;
+import dev.terraforge.plugin.pregen.PregenerationCheckpointStore;
+import dev.terraforge.plugin.pregen.PregenerationController;
+import dev.terraforge.plugin.pregen.ServerHealthPolicy;
 import dev.terraforge.plugin.world.BootstrapDatapackService;
 import dev.terraforge.plugin.world.BukkitManagedWorldEnvironment;
 import dev.terraforge.plugin.world.DemDataFingerprint;
@@ -46,6 +51,7 @@ import dev.terraforge.towny.TownGeoListener;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
@@ -78,7 +84,8 @@ public final class TerraForgePlugin extends JavaPlugin {
     private TerrainStack terrain;
     private SqliteBoundaryIndex boundaries;
     private SqliteTownGeoService townGeography;
-    private PregenerationJob pregeneration;
+    private PaperPregenerationAdapter pregenerationAdapter;
+    private PregenerationController pregenerationController;
     private IntegrationStatus integrations;
     private InMemoryGeoMarkerService markers;
     private TerraForgeBlueMapHook blueMap;
@@ -116,6 +123,7 @@ public final class TerraForgePlugin extends JavaPlugin {
         initializeBlueMapIntegration();
         initializeMetrics();
         verifyManagedWorldOnStartup();
+        initializePregeneration();
         registerCommand("earth", "TerraForge geographic and Earth-world commands", List.of("tf", "terraforge"),
                 new PaperEarthCommand(new EarthCommandRouter(new EarthCommand(this),
                         new WorldCommandHandler(new PluginWorldCommandContext()))));
@@ -164,6 +172,15 @@ public final class TerraForgePlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (pregenerationAdapter != null) {
+            pregenerationAdapter.markShuttingDown();
+        }
+        if (pregenerationController != null) {
+            // Stops dispatching new chunks and writes one final checkpoint; does not wait for
+            // whatever chunk futures are still outstanding.
+            pregenerationController.shutdown();
+            pregenerationController = null;
+        }
         if (blueMap != null) {
             blueMap.disable();
             blueMap = null;
@@ -272,6 +289,49 @@ public final class TerraForgePlugin extends JavaPlugin {
             getLogger().warning(LOG_PREFIX + "Managed Earth world is not verified; managed pregeneration and "
                     + "world commands stay disabled until the world is re-staged.");
         }
+    }
+
+    /**
+     * Builds the bounded pregeneration controller for the primary managed Earth world.
+     *
+     * <p>Gated on {@link #managedWorldReady} exactly like every other managed operation: a world
+     * that failed startup verification must not have chunks generated against it. Any checkpoint on
+     * disk is adopted as-is -- {@link PregenerationCheckpointStore#load()} already downgrades a
+     * checkpoint left {@code RUNNING} or {@code AUTO_PAUSED} by a previous run to {@code PAUSED}, so
+     * pregeneration never silently resumes after a restart.
+     */
+    private void initializePregeneration() {
+        if (!managedWorldReady) {
+            return;
+        }
+        org.bukkit.World world = getServer().getWorld(config.world().name());
+        if (world == null) {
+            getLogger().warning(LOG_PREFIX + "Managed Earth world is not loaded; pregeneration stays disabled.");
+            return;
+        }
+        var adapter = new PaperPregenerationAdapter(this, world, hasPreparedDem());
+        var pregenerationConfig = config.pregeneration();
+        var healthPolicy = new ServerHealthPolicy(pregenerationConfig.pauseWhenPlayersOnline(),
+                pregenerationConfig.minimumTps(), pregenerationConfig.maximumMspt(),
+                pregenerationConfig.minimumFreeDiskGb(), pregenerationConfig.stableResumeSeconds());
+        var store = new PregenerationCheckpointStore(getDataFolder().toPath());
+        PregenerationCheckpoint loaded;
+        try {
+            loaded = store.load().orElse(null);
+        } catch (IOException exception) {
+            getLogger().warning(LOG_PREFIX + "Cannot load pregeneration checkpoint: " + exception.getMessage()
+                    + "; pregeneration stays disabled until it is fixed or removed.");
+            return;
+        }
+        this.pregenerationAdapter = adapter;
+        this.pregenerationController = new PregenerationController(adapter, healthPolicy, adapter::snapshot,
+                store, adapter.mainThreadExecutor(), Clock.systemUTC(), pregenerationConfig.maxInFlight(),
+                pregenerationConfig.checkpointEveryChunks(), loaded, getLogger());
+    }
+
+    /** The bounded pregeneration controller, present once the managed Earth world is verified and loaded. */
+    public Optional<PregenerationController> pregenerationController() {
+        return Optional.ofNullable(pregenerationController);
     }
 
     /**
@@ -611,28 +671,5 @@ public final class TerraForgePlugin extends JavaPlugin {
             blueMap.refreshMarkers();
         }
         return published;
-    }
-
-    synchronized boolean startPregeneration(org.bukkit.World world, org.bukkit.command.CommandSender reporter,
-                                             int centreChunkX, int centreChunkZ, int radiusChunks) {
-        if (pregeneration != null) return false;
-        pregeneration = new PregenerationJob(this, world, reporter, centreChunkX, centreChunkZ, radiusChunks);
-        pregeneration.start();
-        return true;
-    }
-
-    synchronized Optional<String> pregenerationStatus() {
-        return pregeneration == null ? Optional.empty() : Optional.of(pregeneration.status());
-    }
-
-    synchronized boolean cancelPregeneration() {
-        if (pregeneration == null) return false;
-        pregeneration.cancel("cancelled");
-        pregeneration = null;
-        return true;
-    }
-
-    synchronized void clearPregeneration(PregenerationJob completed) {
-        if (pregeneration == completed) pregeneration = null;
     }
 }

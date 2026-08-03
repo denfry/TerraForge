@@ -103,36 +103,16 @@ public final class EarthCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
+    /**
+     * The command surface for the new bounded {@code PregenerationController} is not wired up yet --
+     * that is a separate task. This keeps {@code /earth pregenerate} present and honest in the
+     * meantime rather than silently doing nothing or touching the removed unbounded job.
+     */
     private boolean pregenerate(CommandSender sender, String[] args) {
         if (!sender.hasPermission("terraforge.command.pregenerate")) return denied(sender);
-        if (args.length == 2 && args[1].equalsIgnoreCase("status")) {
-            plugin.pregenerationStatus().ifPresentOrElse(status -> sender.sendMessage(Component.text(
-                    "Pregeneration: " + status, NamedTextColor.AQUA)), () -> sender.sendMessage(Component.text(
-                    "No pregeneration job is running.", NamedTextColor.GRAY)));
-            return true;
-        }
-        if (args.length == 2 && args[1].equalsIgnoreCase("cancel")) {
-            if (!plugin.cancelPregeneration()) sender.sendMessage(Component.text("No pregeneration job is running.", NamedTextColor.GRAY));
-            return true;
-        }
-        if (!(sender instanceof Player player)) {
-            sender.sendMessage(Component.text("Console use requires a player centre; use /earth pregenerate <radius> in-game.", NamedTextColor.RED));
-            return true;
-        }
-        if (args.length != 2) return help(sender);
-        try {
-            int radius = Integer.parseInt(args[1]);
-            if (radius < 0 || radius > 32) throw new IllegalArgumentException();
-            var chunk = player.getLocation().getChunk();
-            if (!plugin.startPregeneration(player.getWorld(), sender, chunk.getX(), chunk.getZ(), radius)) {
-                sender.sendMessage(Component.text("A TerraForge pregeneration job is already running.", NamedTextColor.YELLOW));
-                return true;
-            }
-            int total = Math.multiplyExact(radius * 2 + 1, radius * 2 + 1);
-            sender.sendMessage(Component.text("Pregeneration started for " + total + " chunks; one chunk is requested per tick.", NamedTextColor.GREEN));
-        } catch (IllegalArgumentException exception) {
-            sender.sendMessage(Component.text("Radius must be an integer from 0 to 32 chunks.", NamedTextColor.RED));
-        }
+        sender.sendMessage(Component.text(
+                "Pregeneration now runs on a bounded, durable controller; the command to drive it "
+                        + "is not wired up yet.", NamedTextColor.YELLOW));
         return true;
     }
 
