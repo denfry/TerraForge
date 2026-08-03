@@ -203,8 +203,9 @@ public final class PregenerationController {
 
     private void dispatchNext() {
         PregenerationSpec spec = checkpoint.spec();
-        SpiralCursor.Chunk target;
-        while (true) {
+        long ordinalCeiling = spec.spiralOrdinalCeiling();
+        SpiralCursor.Chunk target = null;
+        while (checkpoint.cursorOrdinal() < ordinalCeiling) {
             SpiralCursor.Chunk relative = SpiralCursor.at(checkpoint.cursorOrdinal());
             SpiralCursor.Chunk candidate = new SpiralCursor.Chunk(
                     relative.x() + spec.centerChunkX(), relative.z() + spec.centerChunkZ());
@@ -215,10 +216,21 @@ public final class PregenerationController {
             }
             // The square spiral steps outside a non-square/off-16-aligned requested region; skip that
             // ordinal without counting it as completed/skipped/failed and keep walking the spiral. The
-            // region is finite and the spiral is unbounded and never repeats a chunk, so this always
-            // terminates once an unprocessed in-bounds chunk remains.
+            // region is finite and the spiral is unbounded and never repeats a chunk, but the ceiling
+            // above still bounds this search: without it, a cursor left past the last in-bounds chunk
+            // (e.g. by max-in-flight > 1 dispatching once more before the last completion lands, or by
+            // a crash/resume that persisted the advanced ordinal without its completion) would search
+            // forever for a candidate that no longer exists.
         }
-        if (port.isChunkGenerated(target.x(), target.z())) {
+        if (target == null) {
+            // Ceiling reached without finding an in-bounds candidate. spiralOrdinalCeiling() is derived
+            // to guarantee full coverage of the spec's bounds, so this shouldn't normally happen -- but
+            // it's a safe backstop regardless: treat the region as exhausted instead of looping forever.
+            completeJob();
+            return;
+        }
+        final SpiralCursor.Chunk resolved = target;
+        if (port.isChunkGenerated(resolved.x(), resolved.z())) {
             checkpoint = new PregenerationCheckpoint(checkpoint.schemaVersion(), checkpoint.spec(),
                     checkpoint.cursorOrdinal(), checkpoint.completed(), checkpoint.skipped() + 1,
                     checkpoint.failed(), checkpoint.state(), checkpoint.pauseReason(),
@@ -229,7 +241,7 @@ public final class PregenerationController {
         inFlight.incrementAndGet();
         CompletableFuture<Boolean> future;
         try {
-            future = port.loadOrGenerate(target.x(), target.z());
+            future = port.loadOrGenerate(resolved.x(), resolved.z());
         } catch (RuntimeException exception) {
             inFlight.decrementAndGet();
             onChunkFailed(exception);
@@ -241,7 +253,7 @@ public final class PregenerationController {
                 onChunkFailed(error);
             } else if (Boolean.FALSE.equals(success)) {
                 onChunkFailed(new IllegalStateException("chunk generation reported failure at "
-                        + target.x() + ", " + target.z()));
+                        + resolved.x() + ", " + resolved.z()));
             } else {
                 onChunkSucceeded();
             }

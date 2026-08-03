@@ -17,6 +17,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Logger;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
 class PregenerationControllerTest {
@@ -369,6 +370,51 @@ class PregenerationControllerTest {
 
         assertThat(controller.status().orElseThrow().state()).isEqualTo(PregenerationState.RUNNING);
         assertThat(port.loadOrGenerateCalls.get()).isEqualTo(1);
+    }
+
+    @Test
+    @Timeout(10)
+    void dispatchNextTerminatesInsteadOfHangingWhenMaxInFlightOutrunsTheLastInBoundsChunk() {
+        // Regression test for the hang fixed alongside spiralOrdinalCeiling(): with maxInFlight >= 2,
+        // once the LAST in-bounds chunk has been dispatched but not yet completed, pump()'s
+        // while (inFlight < maxInFlight) loop can still re-enter dispatchNext() looking for one more
+        // candidate. Before the ordinal ceiling backstop, that search never terminated because nothing
+        // bounded it once every remaining ordinal fell outside the spec -- an effective infinite loop
+        // on the callback-executor thread (the Bukkit main thread in production).
+        //
+        // This spec's chunk bounds are a single row (z fixed at 0, x in [-1, 1]) inside a spiral whose
+        // ring covers a 3x3 area, so only ordinals 0, 1 and 5 land in-bounds among ordinals 0..8; every
+        // other ordinal up to the ceiling must be skipped, exactly reproducing the shape of the bug.
+        PregenerationSpec spec = new PregenerationSpec(0, 0, 0, -1, 1, 0, 0, 3);
+        var port = new ControllableFakePort(Set.of());
+        var store = store();
+        PregenerationCheckpoint initial = new PregenerationCheckpoint(PregenerationCheckpoint.SCHEMA_VERSION,
+                spec, 0, 0, 0, 0, PregenerationState.PAUSED, "test", HASH, HASH, 0);
+        var controller = new PregenerationController(port, healthyPolicy(),
+                PregenerationControllerTest::healthySnapshot, store, Runnable::run,
+                Clock.fixed(Instant.EPOCH, ZoneOffset.UTC), 2, 128, initial, LOGGER);
+
+        controller.resume();
+        // Both dispatch slots filled with the only two in-bounds chunks reachable before the third.
+        assertThat(controller.inFlightCount()).isEqualTo(2);
+
+        // Completing the first frees a slot; pump() dispatches the last in-bounds chunk (ordinal 5).
+        port.complete(0, 0, true);
+        assertThat(controller.inFlightCount()).isEqualTo(2);
+
+        // Completing the second leaves the third (last in-bounds) chunk still outstanding, so
+        // processedCount() < totalChunks and pump() re-enters dispatchNext() one more time -- exactly
+        // the scenario that used to search forever. It must instead hit the ordinal ceiling and
+        // complete the job without dispatching a fourth chunk.
+        port.complete(1, 0, true);
+
+        assertThat(controller.status().orElseThrow().state()).isEqualTo(PregenerationState.COMPLETED);
+        assertThat(port.loadOrGenerateCalls.get()).isEqualTo(3);
+
+        // The still-outstanding third future may complete after the job is already marked COMPLETED;
+        // that must be handled harmlessly rather than double-completing or reopening the job.
+        port.complete(-1, 0, true);
+        assertThat(controller.status().orElseThrow().state()).isEqualTo(PregenerationState.COMPLETED);
     }
 
     private static void await(CountDownLatch latch) {
