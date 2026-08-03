@@ -12,11 +12,10 @@ softdepend:
   - NewTowny
   - BlueMap
 
-commands:
-  earth:
-    description: TerraForge geographic commands.
-    usage: /earth <info|whereami|coords|teleport|country|city|distance|cache|pregenerate|towny|debug|reload>
-    aliases: [tf, terraforge]
+# The earth command (and its tf/terraforge aliases) is registered dynamically at runtime via
+# JavaPlugin#registerCommand, not declared here: Paper's BasicCommand routing lets each feature
+# family (geographic, world, and later pregenerate/data/doctor/performance) enforce its own
+# permission node instead of one static usage string.
 
 permissions:
   terraforge.admin:
@@ -58,5 +57,5 @@ permissions:
     description: Reload terraforge.yml.
     default: op
   terraforge.command.world:
-    description: Inspect managed Earth lifecycle state.
+    description: Plan, stage, verify and abort the managed Earth world (/earth world ...).
     default: op

@@ -26,13 +26,21 @@ import dev.terraforge.geo.water.IndexedWaterProvider;
 import dev.terraforge.geo.water.SqliteWaterProvider;
 import dev.terraforge.generator.TerraForgeChunkGenerator;
 import dev.terraforge.generator.TerrainStack;
+import dev.terraforge.plugin.command.EarthCommandRouter;
+import dev.terraforge.plugin.command.PaperEarthCommand;
+import dev.terraforge.plugin.command.WorldCommandContext;
+import dev.terraforge.plugin.command.WorldCommandHandler;
 import dev.terraforge.plugin.world.BootstrapDatapackService;
+import dev.terraforge.plugin.world.BukkitManagedWorldEnvironment;
 import dev.terraforge.plugin.world.DemDataFingerprint;
 import dev.terraforge.plugin.world.LiveWorldSnapshot;
 import dev.terraforge.plugin.world.LiveWorldVerifier;
+import dev.terraforge.plugin.world.ManagedWorldEnvironment;
 import dev.terraforge.plugin.world.ManagedWorldManifest;
 import dev.terraforge.plugin.world.ManagedWorldManifestStore;
+import dev.terraforge.plugin.world.ManagedWorldService;
 import dev.terraforge.plugin.world.ManagedWorldStartupVerifier;
+import dev.terraforge.plugin.world.PaperWorldSettingsEditor;
 import dev.terraforge.towny.SqliteTownGeoService;
 import dev.terraforge.towny.TownGeoListener;
 import java.io.IOException;
@@ -41,6 +49,7 @@ import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Function;
 import org.bstats.bukkit.Metrics;
 import org.bstats.charts.SimplePie;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -79,6 +88,15 @@ public final class TerraForgePlugin extends JavaPlugin {
     /** The full name Paper registers the bootstrap-discovered height pack under: plugin name + id. */
     private static final String MANAGED_DATAPACK_NAME = "TerraForge/" + BootstrapDatapackService.DATAPACK_ID;
 
+    /**
+     * Paper chunk settings applied to the managed earth world's {@code paper-world.yml}. Not yet
+     * exposed in {@code terraforge.yml} -- these match Paper's own defaults for auto-save interval and
+     * per-tick auto-save chunk cap, with a short unload delay so a player crossing a chunk border does
+     * not thrash it.
+     */
+    private static final PaperWorldSettingsEditor.ChunkSettings MANAGED_WORLD_CHUNK_SETTINGS =
+            new PaperWorldSettingsEditor.ChunkSettings(6000, 24, "10s");
+
     @Override
     public void onEnable() {
         try {
@@ -98,13 +116,9 @@ public final class TerraForgePlugin extends JavaPlugin {
         initializeBlueMapIntegration();
         initializeMetrics();
         verifyManagedWorldOnStartup();
-        var earthCommand = getCommand("earth");
-        if (earthCommand == null) {
-            throw new IllegalStateException("plugin.yml is missing the earth command");
-        }
-        var executor = new EarthCommand(this);
-        earthCommand.setExecutor(executor);
-        earthCommand.setTabCompleter(executor);
+        registerCommand("earth", "TerraForge geographic and Earth-world commands", List.of("tf", "terraforge"),
+                new PaperEarthCommand(new EarthCommandRouter(new EarthCommand(this),
+                        new WorldCommandHandler(new PluginWorldCommandContext()))));
         printBanner();
     }
 
@@ -288,6 +302,32 @@ public final class TerraForgePlugin extends JavaPlugin {
     /** True once the managed Earth world has been verified against the live server this run. */
     public boolean managedWorldReady() {
         return managedWorldReady;
+    }
+
+    /** Whether {@link #demReader} has at least one prepared tile catalogued. */
+    private boolean hasPreparedDem() {
+        for (var ignored : demReader.availableTiles()) {
+            return true;
+        }
+        return false;
+    }
+
+    /** Wires {@code WorldCommandHandler} to this plugin's live configuration and services. */
+    private final class PluginWorldCommandContext implements WorldCommandContext {
+        private final ManagedWorldService service = new ManagedWorldService(getDataFolder().toPath());
+
+        @Override public ManagedWorldService service() { return service; }
+        @Override public ManagedWorldEnvironment environment() { return new BukkitManagedWorldEnvironment(getServer(), hasPreparedDem()); }
+        @Override public String configuredWorldName() { return config.world().name(); }
+        @Override public long minimumFreeDiskGb() { return config.pregeneration().minimumFreeDiskGb(); }
+        @Override public VerticalProfile verticalProfile() { return VerticalProfile.from(config.terrain()); }
+        @Override public Path demDirectory() { return demReader.directory(); }
+        @Override public PaperWorldSettingsEditor.ChunkSettings chunkSettings() { return MANAGED_WORLD_CHUNK_SETTINGS; }
+        @Override public Path serverRoot() { return environment().serverRoot(); }
+        @Override public Path worldContainer() { return environment().worldContainer(); }
+        @Override public Function<ManagedWorldManifest, LiveWorldSnapshot> liveSnapshotFactory() {
+            return TerraForgePlugin.this::captureLiveWorldSnapshot;
+        }
     }
 
     void validateConfigurationForReload() throws IOException {

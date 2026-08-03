@@ -4,7 +4,6 @@ import java.util.Locale;
 import java.util.List;
 import java.util.stream.Stream;
 import dev.terraforge.core.coord.GeoPoint;
-import dev.terraforge.plugin.world.ManagedWorldManifestStore;
 import dev.terraforge.core.geodesy.Geodesy;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -16,24 +15,39 @@ import org.bukkit.entity.Player;
 import org.bukkit.Location;
 import org.jetbrains.annotations.NotNull;
 
-/** Read-only player-facing geographic commands. */
-final class EarthCommand implements CommandExecutor, TabCompleter {
+/**
+ * Read-only player-facing geographic commands, plus the legacy admin verbs
+ * ({@code pregenerate}, {@code towny}, {@code debug}, {@code reload}) not yet migrated to a
+ * dedicated {@link dev.terraforge.plugin.command.EarthSubcommand}. {@code EarthCommandRouter}
+ * calls {@link #dispatch} and {@link #completions} directly as its fallback family; the {@link
+ * CommandExecutor}/{@link TabCompleter} implementation below is kept only so this class still works
+ * standalone.
+ *
+ * <p>The managed-world {@code world} verb used to live here; it now belongs entirely to {@code
+ * dev.terraforge.plugin.command.WorldCommandHandler}.
+ */
+public final class EarthCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> SUBCOMMANDS = List.of("info", "whereami", "coords", "distance",
-            "country", "cache", "city", "teleport", "pregenerate", "towny", "debug", "reload", "world");
+            "country", "cache", "city", "teleport", "pregenerate", "towny", "debug", "reload");
 
     /** Tab completion is a hint, not a search: a gazetteer has far too many names to list. */
     private static final int COMPLETION_LIMIT = 40;
 
     private final TerraForgePlugin plugin;
 
-    EarthCommand(TerraForgePlugin plugin) {
+    public EarthCommand(TerraForgePlugin plugin) {
         this.plugin = plugin;
     }
 
     @Override
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command,
                              @NotNull String label, @NotNull String[] args) {
+        return dispatch(sender, args);
+    }
+
+    /** The geographic and legacy-admin dispatch, independent of any {@link Command}/label Bukkit supplies. */
+    public boolean dispatch(CommandSender sender, String[] args) {
         if (args.length == 0) return help(sender);
         return switch (args[0].toLowerCase(Locale.ROOT)) {
             case "info" -> info(sender);
@@ -62,22 +76,8 @@ final class EarthCommand implements CommandExecutor, TabCompleter {
                     ? playerCommand(sender, "terraforge.command.debug", this::debugOverlay)
                     : playerCommand(sender, "terraforge.command.debug", this::debug);
             case "reload" -> reload(sender);
-            case "world" -> world(sender, args);
             default -> help(sender);
         };
-    }
-
-    private boolean world(CommandSender sender, String[] args) {
-        if (!sender.hasPermission("terraforge.command.world")) return denied(sender);
-        if (args.length != 2 || !args[1].equalsIgnoreCase("status")) return help(sender);
-        try {
-            new ManagedWorldManifestStore(plugin.getDataFolder().toPath()).load().ifPresentOrElse(manifest ->
-                    sender.sendMessage(Component.text("Managed Earth: " + manifest.state(), NamedTextColor.AQUA)),
-                    () -> sender.sendMessage(Component.text("Managed Earth has not been staged.", NamedTextColor.GRAY)));
-        } catch (java.io.IOException exception) {
-            sender.sendMessage(Component.text("Managed Earth manifest is invalid; run diagnostics as an operator.", NamedTextColor.RED));
-        }
-        return true;
     }
 
     private boolean info(CommandSender sender) {
@@ -256,6 +256,7 @@ final class EarthCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage(Component.text("Usage: /earth <info|whereami|coords|distance|country|city|teleport city|country|cache>", NamedTextColor.YELLOW));
         sender.sendMessage(Component.text("Pregenerate: /earth pregenerate <radius 0-32|status|cancel>", NamedTextColor.YELLOW));
         sender.sendMessage(Component.text("Admin: /earth towny <refresh [town]|status>, /earth debug [overlay], /earth reload", NamedTextColor.YELLOW));
+        sender.sendMessage(Component.text("World: /earth world <plan|create|status|verify|abort>", NamedTextColor.YELLOW));
         return true;
     }
 
@@ -423,6 +424,11 @@ final class EarthCommand implements CommandExecutor, TabCompleter {
     @Override
     public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command,
                                       @NotNull String alias, @NotNull String[] args) {
+        return completions(sender, args);
+    }
+
+    /** The geographic and legacy-admin completions, independent of any {@link Command}/alias Bukkit supplies. */
+    public List<String> completions(CommandSender sender, String[] args) {
         if (args.length == 0) {
             return List.of();
         }

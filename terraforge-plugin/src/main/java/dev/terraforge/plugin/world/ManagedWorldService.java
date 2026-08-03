@@ -8,6 +8,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Consumer;
+import java.util.function.Function;
 
 /**
  * Coordination surface for a restart-bound, primary earth creation: {@link #plan}, {@link #stage},
@@ -26,15 +28,17 @@ public final class ManagedWorldService {
     private final ManagedWorldManifestStore manifests;
     private final ManagedWorldStager stager;
     private final ManagedWorldAbort aborter;
+    private final ManagedWorldStartupVerifier verifier;
 
-    /** Plan-only instance; {@link #stage}, {@link #abort} and {@link #status} are unavailable. */
-    public ManagedWorldService() { this.manifests = null; this.stager = null; this.aborter = null; }
+    /** Plan-only instance; {@link #stage}, {@link #abort}, {@link #status} and {@link #verify} are unavailable. */
+    public ManagedWorldService() { this.manifests = null; this.stager = null; this.aborter = null; this.verifier = null; }
 
     /** Full coordinator, backed by the manifest store rooted at {@code pluginRoot}. */
     public ManagedWorldService(Path pluginRoot) {
         this.manifests = new ManagedWorldManifestStore(pluginRoot);
         this.stager = new ManagedWorldStager(pluginRoot);
         this.aborter = new ManagedWorldAbort(manifests);
+        this.verifier = new ManagedWorldStartupVerifier(manifests, new LiveWorldVerifier());
     }
 
     /**
@@ -121,6 +125,21 @@ public final class ManagedWorldService {
     public ManagedWorldState status() throws IOException {
         requireCoordinator();
         return manifests.load().map(ManagedWorldManifest::state).orElse(ManagedWorldState.ABSENT);
+    }
+
+    /**
+     * Re-runs the same verification {@link ManagedWorldStartupVerifier} performs on plugin enable, on
+     * operator demand -- e.g. after suspecting drift without wanting to restart the server. Deliberately
+     * reuses that class rather than duplicating its state transitions and comparison logic, so an
+     * on-demand verify and the startup verify can never quietly diverge.
+     *
+     * @param snapshotFactory builds the live snapshot to check the current manifest against
+     * @param onFailure       receives every individual check failure, for reporting to the caller
+     * @return true once the managed world is verified and ready for managed operations
+     */
+    public boolean verify(Function<ManagedWorldManifest, LiveWorldSnapshot> snapshotFactory, Consumer<String> onFailure) throws IOException {
+        requireCoordinator();
+        return verifier.verifyOnEnable(snapshotFactory, onFailure);
     }
 
     private static String relativize(Path root, Path target) {
