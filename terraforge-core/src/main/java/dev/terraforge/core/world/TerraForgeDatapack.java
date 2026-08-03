@@ -21,7 +21,8 @@ public final class TerraForgeDatapack {
         return new RenderedPack(files, fingerprint(files));
     }
 
-    private static String fingerprint(Map<String, byte[]> files) {
+    /** SHA-256 over sorted relative paths and bytes; reused to verify an on-disk pack against a manifest. */
+    public static String fingerprint(Map<String, byte[]> files) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             for (var entry : new TreeMap<>(files).entrySet()) { digest.update(entry.getKey().getBytes(StandardCharsets.UTF_8)); digest.update((byte) 0); digest.update(entry.getValue()); digest.update((byte) 0); }
