@@ -4,6 +4,7 @@ import java.util.Locale;
 import java.util.List;
 import java.util.stream.Stream;
 import dev.terraforge.core.coord.GeoPoint;
+import dev.terraforge.plugin.world.ManagedWorldManifestStore;
 import dev.terraforge.core.geodesy.Geodesy;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -19,7 +20,7 @@ import org.jetbrains.annotations.NotNull;
 final class EarthCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> SUBCOMMANDS = List.of("info", "whereami", "coords", "distance",
-            "country", "cache", "city", "teleport", "pregenerate", "towny", "debug", "reload");
+            "country", "cache", "city", "teleport", "pregenerate", "towny", "debug", "reload", "world");
 
     /** Tab completion is a hint, not a search: a gazetteer has far too many names to list. */
     private static final int COMPLETION_LIMIT = 40;
@@ -61,8 +62,22 @@ final class EarthCommand implements CommandExecutor, TabCompleter {
                     ? playerCommand(sender, "terraforge.command.debug", this::debugOverlay)
                     : playerCommand(sender, "terraforge.command.debug", this::debug);
             case "reload" -> reload(sender);
+            case "world" -> world(sender, args);
             default -> help(sender);
         };
+    }
+
+    private boolean world(CommandSender sender, String[] args) {
+        if (!sender.hasPermission("terraforge.command.world")) return denied(sender);
+        if (args.length != 2 || !args[1].equalsIgnoreCase("status")) return help(sender);
+        try {
+            new ManagedWorldManifestStore(plugin.getDataFolder().toPath()).load().ifPresentOrElse(manifest ->
+                    sender.sendMessage(Component.text("Managed Earth: " + manifest.state(), NamedTextColor.AQUA)),
+                    () -> sender.sendMessage(Component.text("Managed Earth has not been staged.", NamedTextColor.GRAY)));
+        } catch (java.io.IOException exception) {
+            sender.sendMessage(Component.text("Managed Earth manifest is invalid; run diagnostics as an operator.", NamedTextColor.RED));
+        }
+        return true;
     }
 
     private boolean info(CommandSender sender) {

@@ -1,5 +1,6 @@
 package dev.terraforge.cli.setup;
 
+import dev.terraforge.core.config.VerticalProfile;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 

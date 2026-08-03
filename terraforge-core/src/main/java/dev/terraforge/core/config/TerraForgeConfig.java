@@ -22,6 +22,7 @@ public record TerraForgeConfig(
         BiomesSection biomes,
         VegetationSection vegetation,
         GenerationSection generation,
+        PregenerationSection pregeneration,
         InfrastructureSection infrastructure,
         DataSection data,
         CacheSection cache,
@@ -29,6 +30,13 @@ public record TerraForgeConfig(
         BlueMapSection bluemap,
         DebugSection debug,
         TestRegionSection testRegion) {
+
+    /** Keeps configuration files written before pregeneration limits compatible and safe. */
+    public TerraForgeConfig {
+        if (pregeneration == null) {
+            pregeneration = PregenerationSection.defaults();
+        }
+    }
 
     public static TerraForgeConfig defaults() {
         return new TerraForgeConfig(
@@ -40,6 +48,7 @@ public record TerraForgeConfig(
                 new BiomesSection(true, 0.35),
                 new VegetationSection(true, 1.0),
                 new GenerationSection(true, false, false, 4),
+                PregenerationSection.defaults(),
                 InfrastructureSection.allDisabled(),
                 new DataSection("data", "cache", "terraforge.db"),
                 new CacheSection(1024, 256, DEFAULT_LANDCOVER_GRID_CACHE_ENTRIES, 4096, 300),
@@ -117,6 +126,16 @@ public record TerraForgeConfig(
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record GenerationSection(boolean naturalOnly, boolean caves, boolean manMadeStructures,
                                     int workerThreads) {
+    }
+
+    /** Limits that keep disk-backed pregeneration bounded and safe to resume. */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record PregenerationSection(int maxInFlight, boolean pauseWhenPlayersOnline,
+                                       double minimumTps, double maximumMspt, int stableResumeSeconds,
+                                       long minimumFreeDiskGb, int checkpointEveryChunks) {
+        public static PregenerationSection defaults() {
+            return new PregenerationSection(1, true, 18.0, 40.0, 15, 10, 128);
+        }
     }
 
     /**

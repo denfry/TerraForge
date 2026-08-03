@@ -1,5 +1,7 @@
 package dev.terraforge.cli.setup;
 
+import dev.terraforge.core.config.VerticalProfile;
+
 import dev.terraforge.core.config.ConfigLoader;
 import dev.terraforge.core.config.TerraForgeConfig;
 import dev.terraforge.core.coord.GeoBounds;
@@ -98,6 +100,7 @@ public final class PluginLayout {
                 defaults.biomes(),
                 defaults.vegetation(),
                 defaults.generation(),
+                defaults.pregeneration(),
                 defaults.infrastructure(),
                 defaults.data(),
                 defaults.cache(),

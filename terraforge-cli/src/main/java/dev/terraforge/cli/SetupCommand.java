@@ -3,7 +3,7 @@ package dev.terraforge.cli;
 import dev.terraforge.cli.fetch.Fetcher;
 import dev.terraforge.cli.fetch.SourceCatalog;
 import dev.terraforge.cli.setup.PluginLayout;
-import dev.terraforge.cli.setup.VerticalProfile;
+import dev.terraforge.core.config.VerticalProfile;
 import dev.terraforge.core.config.TerraForgeConfig;
 import dev.terraforge.core.coord.GeoBounds;
 import dev.terraforge.core.coord.GeoPoint;

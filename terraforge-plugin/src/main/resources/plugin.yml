@@ -31,6 +31,7 @@ permissions:
       terraforge.command.pregenerate: true
       terraforge.command.towny: true
       terraforge.command.reload: true
+      terraforge.command.world: true
 
   terraforge.command.info:
     description: View world and projection information.
@@ -55,4 +56,7 @@ permissions:
     default: op
   terraforge.command.reload:
     description: Reload terraforge.yml.
+    default: op
+  terraforge.command.world:
+    description: Inspect managed Earth lifecycle state.
     default: op

@@ -1,0 +1,10 @@
+name: TerraForge
+version: '${version}'
+main: dev.terraforge.plugin.TerraForgePlugin
+bootstrapper: dev.terraforge.plugin.TerraForgeBootstrap
+api-version: '${apiVersion}'
+dependencies:
+  server:
+    Towny: {load: BEFORE, required: false, join-classpath: true}
+    NewTowny: {load: BEFORE, required: false, join-classpath: true}
+    BlueMap: {load: BEFORE, required: false, join-classpath: true}

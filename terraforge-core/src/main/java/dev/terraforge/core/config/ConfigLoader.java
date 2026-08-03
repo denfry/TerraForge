@@ -77,6 +77,20 @@ public final class ConfigLoader {
         require(config.generation() != null, "generation section must be present");
         require(config.generation().workerThreads() >= 1, "generation.worker-threads must be at least 1");
 
+        TerraForgeConfig.PregenerationSection pregeneration = config.pregeneration();
+        require(pregeneration != null, "pregeneration section must be present");
+        require(pregeneration.maxInFlight() >= 1, "pregeneration.max-in-flight must be at least 1");
+        require(pregeneration.minimumTps() >= 0.0 && pregeneration.minimumTps() <= 20.0,
+                "pregeneration.minimum-tps must be between 0 and 20");
+        require(pregeneration.maximumMspt() > 0.0 && Double.isFinite(pregeneration.maximumMspt()),
+                "pregeneration.maximum-mspt must be greater than 0");
+        require(pregeneration.stableResumeSeconds() >= 0,
+                "pregeneration.stable-resume-seconds must not be negative");
+        require(pregeneration.minimumFreeDiskGb() >= 0,
+                "pregeneration.minimum-free-disk-gb must not be negative");
+        require(pregeneration.checkpointEveryChunks() >= 1,
+                "pregeneration.checkpoint-every-chunks must be at least 1");
+
         require(config.cache() != null && config.cache().memoryLimitMb() > 0,
                 "cache.memory-limit-mb must be greater than 0");
         require(config.cache().demTileCacheEntries() > 0, "cache.dem-tile-cache-entries must be greater than 0");

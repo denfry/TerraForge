@@ -21,6 +21,7 @@ dependencies {
 
     compileOnly("io.papermc.paper:paper-api:$paperVersion")
     testCompileOnly("io.papermc.paper:paper-api:$paperVersion")
+    testRuntimeOnly("io.papermc.paper:paper-api:$paperVersion")
 }
 
 tasks.named<ProcessResources>("processResources") {
@@ -29,7 +30,7 @@ tasks.named<ProcessResources>("processResources") {
         "apiVersion" to minecraftVersion.substringBeforeLast('.'),
     )
     inputs.properties(props)
-    filesMatching("plugin.yml") { expand(props) }
+    filesMatching(listOf("plugin.yml", "paper-plugin.yml")) { expand(props) }
 }
 
 tasks.shadowJar {

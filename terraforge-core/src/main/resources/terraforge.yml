@@ -72,6 +72,16 @@ generation:
   man-made-structures: false
   worker-threads: 4
 
+pregeneration:
+  # Never permit an unbounded async queue; one chunk is the safe default.
+  max-in-flight: 1
+  pause-when-players-online: true
+  minimum-tps: 18.0
+  maximum-mspt: 40.0
+  stable-resume-seconds: 15
+  minimum-free-disk-gb: 10
+  checkpoint-every-chunks: 128
+
 # Hard switches for man-made features. TerraForge has no code path that builds them;
 # these must all stay false or the plugin refuses to start.
 infrastructure:

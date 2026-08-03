@@ -1,10 +1,12 @@
 package dev.terraforge.cli.setup;
 
+import dev.terraforge.core.config.VerticalProfile;
+import dev.terraforge.core.world.TerraForgeDatapack;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Locale;
 
 /**
  * Writes the datapack that gives the world its height.
@@ -20,9 +22,6 @@ import java.util.Locale;
  * failing silently when the guess is wrong.
  */
 public final class DimensionDatapack {
-
-    /** Datapack format for 1.21.x. Newer servers accept older formats with a warning. */
-    private static final int PACK_FORMAT = 57;
 
     private DimensionDatapack() {
     }
@@ -40,45 +39,12 @@ public final class DimensionDatapack {
         Path root = directory.resolve("datapack").resolve("terraforge-world-height");
         Files.createDirectories(root.resolve("data/minecraft/dimension_type"));
 
-        Files.writeString(root.resolve("pack.mcmeta"), String.format(Locale.ROOT, """
-                {
-                  "pack": {
-                    "pack_format": %d,
-                    "description": "TerraForge world height: %d..%d (%d blocks, %d sections)"
-                  }
-                }
-                """, PACK_FORMAT, profile.minY(), profile.maxY(), profile.height(),
-                profile.chunkSections()), StandardCharsets.UTF_8);
-
-        // Vanilla's overworld values, with min_y, height and logical_height replaced. Everything
-        // else is copied verbatim: changing ambient light or monster spawn rules here would be an
-        // unrelated gameplay decision smuggled in with a height change.
-        Files.writeString(root.resolve("data/minecraft/dimension_type/overworld.json"),
-                String.format(Locale.ROOT, """
-                {
-                  "ultrawarm": false,
-                  "natural": true,
-                  "piglin_safe": false,
-                  "respawn_anchor_works": false,
-                  "bed_works": true,
-                  "has_raids": true,
-                  "has_skylight": true,
-                  "has_ceiling": false,
-                  "coordinate_scale": 1.0,
-                  "ambient_light": 0.0,
-                  "logical_height": %d,
-                  "effects": "minecraft:overworld",
-                  "infiniburn": "#minecraft:infiniburn_overworld",
-                  "min_y": %d,
-                  "height": %d,
-                  "monster_spawn_block_light_limit": 0,
-                  "monster_spawn_light_level": {
-                    "type": "minecraft:uniform",
-                    "max_inclusive": 7,
-                    "min_inclusive": 0
-                  }
-                }
-                """, profile.height(), profile.minY(), profile.height()), StandardCharsets.UTF_8);
+        for (var entry : TerraForgeDatapack.render(profile).files().entrySet()) {
+            Path output = root.resolve(entry.getKey()).normalize();
+            if (!output.startsWith(root)) throw new IOException("Refusing datapack path outside destination");
+            Files.createDirectories(output.getParent());
+            Files.write(output, entry.getValue());
+        }
         return root;
     }
 

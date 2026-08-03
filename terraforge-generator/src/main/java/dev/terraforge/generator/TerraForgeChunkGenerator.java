@@ -11,7 +11,9 @@ import dev.terraforge.generator.surface.SurfacePalette;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.bukkit.HeightMap;
+import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.World;
 import org.bukkit.generator.BiomeProvider;
 import org.bukkit.generator.ChunkGenerator;
 import org.bukkit.generator.WorldInfo;
@@ -126,6 +128,14 @@ public final class TerraForgeChunkGenerator extends ChunkGenerator {
         TerrainSample sample = samples.at(x & 15, z & 15);
         int surface = sample.surfaceY();
         return sample.isWater() ? Math.max(surface, sample.waterSurfaceY()) : surface;
+    }
+
+    /** Avoids Paper's random safe-spawn scan: the origin surface is deterministic terrain. */
+    @Override
+    public Location getFixedSpawnLocation(World world, Random random) {
+        int y = Math.clamp(getBaseHeight(world, random, 0, 0, HeightMap.MOTION_BLOCKING_NO_LEAVES) + 1,
+                world.getMinHeight() + 1, world.getMaxHeight() - 1);
+        return new Location(world, 0.5, y, 0.5);
     }
 
     @Override
