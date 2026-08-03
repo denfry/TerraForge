@@ -26,17 +26,29 @@ import dev.terraforge.geo.water.IndexedWaterProvider;
 import dev.terraforge.geo.water.SqliteWaterProvider;
 import dev.terraforge.generator.TerraForgeChunkGenerator;
 import dev.terraforge.generator.TerrainStack;
+import dev.terraforge.core.coord.MinecraftPos;
+import dev.terraforge.plugin.command.DataCommandContext;
+import dev.terraforge.plugin.command.DataCommandHandler;
+import dev.terraforge.plugin.command.DoctorCommandContext;
+import dev.terraforge.plugin.command.DoctorCommandHandler;
 import dev.terraforge.plugin.command.EarthCommandRouter;
 import dev.terraforge.plugin.command.PaperEarthCommand;
+import dev.terraforge.plugin.command.PerformanceCommandContext;
+import dev.terraforge.plugin.command.PerformanceCommandHandler;
+import dev.terraforge.plugin.command.PregenerationCommandContext;
+import dev.terraforge.plugin.command.PregenerationCommandHandler;
 import dev.terraforge.plugin.command.WorldCommandContext;
 import dev.terraforge.plugin.command.WorldCommandHandler;
 import dev.terraforge.plugin.pregen.PaperPregenerationAdapter;
 import dev.terraforge.plugin.pregen.PregenerationCheckpoint;
 import dev.terraforge.plugin.pregen.PregenerationCheckpointStore;
 import dev.terraforge.plugin.pregen.PregenerationController;
+import dev.terraforge.plugin.pregen.PregenerationSpec;
 import dev.terraforge.plugin.pregen.ServerHealthPolicy;
+import dev.terraforge.plugin.pregen.ServerHealthSnapshot;
 import dev.terraforge.plugin.world.BootstrapDatapackService;
 import dev.terraforge.plugin.world.BukkitManagedWorldEnvironment;
+import dev.terraforge.plugin.world.DemCorruptionCache;
 import dev.terraforge.plugin.world.DemDataFingerprint;
 import dev.terraforge.plugin.world.LiveWorldSnapshot;
 import dev.terraforge.plugin.world.LiveWorldVerifier;
@@ -46,15 +58,18 @@ import dev.terraforge.plugin.world.ManagedWorldManifestStore;
 import dev.terraforge.plugin.world.ManagedWorldService;
 import dev.terraforge.plugin.world.ManagedWorldStartupVerifier;
 import dev.terraforge.plugin.world.PaperWorldSettingsEditor;
+import dev.terraforge.plugin.world.WorldCreationCheck;
 import dev.terraforge.towny.SqliteTownGeoService;
 import dev.terraforge.towny.TownGeoListener;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.Executor;
 import java.util.function.Function;
 import org.bstats.bukkit.Metrics;
 import org.bstats.charts.SimplePie;
@@ -91,6 +106,8 @@ public final class TerraForgePlugin extends JavaPlugin {
     private TerraForgeBlueMapHook blueMap;
     private DebugOverlay debugOverlay;
     private boolean managedWorldReady;
+    private DemCorruptionCache demCorruptionCache;
+    private final Executor asyncExecutor = task -> getServer().getScheduler().runTaskAsynchronously(this, task);
 
     /** The full name Paper registers the bootstrap-discovered height pack under: plugin name + id. */
     private static final String MANAGED_DATAPACK_NAME = "TerraForge/" + BootstrapDatapackService.DATAPACK_ID;
@@ -126,7 +143,11 @@ public final class TerraForgePlugin extends JavaPlugin {
         initializePregeneration();
         registerCommand("earth", "TerraForge geographic and Earth-world commands", List.of("tf", "terraforge"),
                 new PaperEarthCommand(new EarthCommandRouter(new EarthCommand(this),
-                        new WorldCommandHandler(new PluginWorldCommandContext()))));
+                        new WorldCommandHandler(new PluginWorldCommandContext()),
+                        new PregenerationCommandHandler(new PluginPregenerationCommandContext()),
+                        new DataCommandHandler(new PluginDataCommandContext()),
+                        new DoctorCommandHandler(new PluginDoctorCommandContext()),
+                        new PerformanceCommandHandler(new PluginPerformanceCommandContext()))));
         printBanner();
     }
 
@@ -164,6 +185,7 @@ public final class TerraForgePlugin extends JavaPlugin {
             throw new IOException("Cannot read DEM directory " + demDirectory + ": " + e.getMessage(), e);
         }
         this.elevation = new DemElevationProvider(demReader, cacheManager, config.cache().demTileCacheEntries());
+        this.demCorruptionCache = new DemCorruptionCache(demReader.directory(), this::preparedTileCount);
 
         this.terrain = TerrainStack.create(config, transformer, verticalScale, elevation, cacheManager,
                 loadWaterProvider(), loadLandcoverProvider(), loadKarstProvider());
@@ -388,6 +410,90 @@ public final class TerraForgePlugin extends JavaPlugin {
         @Override public Function<ManagedWorldManifest, LiveWorldSnapshot> liveSnapshotFactory() {
             return TerraForgePlugin.this::captureLiveWorldSnapshot;
         }
+    }
+
+    /** Wires {@code PregenerationCommandHandler} to this plugin's live pregeneration state. */
+    private final class PluginPregenerationCommandContext implements PregenerationCommandContext {
+        @Override public boolean managedWorldReady() { return managedWorldReady; }
+        @Override public Optional<PregenerationController> controller() { return pregenerationController(); }
+        @Override public PregenerationSpec fullRegionSpec() { return TerraForgePlugin.this.fullRegionSpec(); }
+        @Override public String currentConfigFingerprint() { return VerticalProfile.from(config.terrain()).fingerprint(); }
+        @Override public String currentDataFingerprint() { return DemDataFingerprint.of(demReader.directory()); }
+        @Override public ServerHealthSnapshot currentHealth() {
+            return pregenerationAdapter != null ? pregenerationAdapter.snapshot()
+                    : new ServerHealthSnapshot(getServer().getOnlinePlayers().size(), getServer().getTPS()[0],
+                            getServer().getAverageTickTime(), 0, false, false, false);
+        }
+        @Override public long reserveDiskGb() { return config.pregeneration().minimumFreeDiskGb(); }
+        @Override public boolean pauseWhenPlayersOnline() { return config.pregeneration().pauseWhenPlayersOnline(); }
+        @Override public Clock clock() { return Clock.systemUTC(); }
+    }
+
+    /** Wires {@code DataCommandHandler} to the live DEM inventory. */
+    private final class PluginDataCommandContext implements DataCommandContext {
+        @Override public int tileCount() { return preparedTileCount(); }
+        @Override public String coverageDescription() { return elevation.coverage().toString(); }
+        @Override public boolean hasBathymetry() { return elevation.hasBathymetry(); }
+        @Override public int missingRequestedTileCount() { return elevation.missingTiles().size(); }
+        @Override public int cachedCorruptFileCount() { return demCorruptionCache.corruptFileCount(); }
+        @Override public void refreshCorruptionAsync() { demCorruptionCache.refreshAsync(asyncExecutor); }
+    }
+
+    /** Wires {@code DoctorCommandHandler} to a fresh set of live diagnostics. */
+    private final class PluginDoctorCommandContext implements DoctorCommandContext {
+        @Override public List<WorldCreationCheck> diagnose() {
+            List<WorldCreationCheck> checks = new ArrayList<>();
+            checks.add(new WorldCreationCheck("managed-world", managedWorldReady,
+                    managedWorldReady ? "verified against the live server"
+                            : "not verified; managed operations stay disabled"));
+            checks.add(new WorldCreationCheck("dem-data", preparedTileCount() > 0,
+                    preparedTileCount() + " prepared tile(s)"));
+            checks.add(new WorldCreationCheck("boundaries", boundaries != null,
+                    boundaries != null ? "geography database loaded" : "no prepared geography database"));
+            checks.add(new WorldCreationCheck("pregeneration", pregenerationController != null,
+                    pregenerationController != null ? "controller active" : "controller not active"));
+            return checks;
+        }
+    }
+
+    /** Wires {@code PerformanceCommandHandler} to live server and pregeneration health. */
+    private final class PluginPerformanceCommandContext implements PerformanceCommandContext {
+        @Override public double tps() { return getServer().getTPS()[0]; }
+        @Override public double mspt() { return getServer().getAverageTickTime(); }
+        @Override public int onlinePlayers() { return getServer().getOnlinePlayers().size(); }
+        @Override public long usableDiskGb() { return getDataFolder().getUsableSpace() / (1024L * 1024L * 1024L); }
+        @Override public Optional<Integer> pregenerationInFlight() {
+            return pregenerationController().map(PregenerationController::inFlightCount);
+        }
+        @Override public Optional<String> pregenerationState() {
+            return pregenerationController().flatMap(PregenerationController::status)
+                    .map(checkpoint -> checkpoint.state().toString());
+        }
+    }
+
+    /** Prepared tile count from {@link #demReader}'s in-memory catalogue -- never a disk scan. */
+    private int preparedTileCount() {
+        int count = 0;
+        for (var ignored : demReader.availableTiles()) {
+            count++;
+        }
+        return count;
+    }
+
+    /**
+     * The bounds {@code /earth pregenerate full confirm} runs against: a square centered on the
+     * configured test region, sized to its longer axis so the whole region is covered.
+     */
+    private PregenerationSpec fullRegionSpec() {
+        var bounds = config.testRegion().toBounds();
+        MinecraftPos northWest = transformer.toMinecraft(bounds.maxLatitude(), bounds.minLongitude());
+        MinecraftPos southEast = transformer.toMinecraft(bounds.minLatitude(), bounds.maxLongitude());
+        int centerX = (int) Math.round((northWest.x() + southEast.x()) / 2.0);
+        int centerZ = (int) Math.round((northWest.z() + southEast.z()) / 2.0);
+        int halfWidth = (int) Math.round(Math.abs(southEast.x() - northWest.x()) / 2.0);
+        int halfHeight = (int) Math.round(Math.abs(southEast.z() - northWest.z()) / 2.0);
+        int radius = Math.max(halfWidth, halfHeight);
+        return PregenerationSpec.around(centerX, centerZ, radius);
     }
 
     void validateConfigurationForReload() throws IOException {

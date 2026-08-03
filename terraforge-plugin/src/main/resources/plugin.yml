@@ -31,6 +31,9 @@ permissions:
       terraforge.command.towny: true
       terraforge.command.reload: true
       terraforge.command.world: true
+      terraforge.command.data: true
+      terraforge.command.doctor: true
+      terraforge.command.performance: true
 
   terraforge.command.info:
     description: View world and projection information.
@@ -58,4 +61,13 @@ permissions:
     default: op
   terraforge.command.world:
     description: Plan, stage, verify and abort the managed Earth world (/earth world ...).
+    default: op
+  terraforge.command.data:
+    description: Report prepared DEM data inventory (/earth data status).
+    default: op
+  terraforge.command.doctor:
+    description: Run TerraForge diagnostics (/earth doctor).
+    default: op
+  terraforge.command.performance:
+    description: Report live server and pregeneration performance (/earth performance).
     default: op

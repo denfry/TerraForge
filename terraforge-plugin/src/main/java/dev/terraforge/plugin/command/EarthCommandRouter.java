@@ -11,21 +11,27 @@ import org.bukkit.command.CommandSender;
 /**
  * Top-level {@code /earth} dispatcher.
  *
- * <p>A small, growable map of feature families ({@code "world" -> WorldCommandHandler} today; {@code
- * "pregenerate"/"data"/"doctor"/"performance"} land here in a later task) is tried first. Anything the
- * map does not recognise falls back to the legacy {@link EarthCommand}, which still owns the
- * geographic commands and the not-yet-migrated admin verbs. The legacy path sends its own messages
- * directly to the sender (as it always has), so it returns {@link CommandResult#NONE} here rather than
- * a duplicate copy of what it already sent.
+ * <p>A small, growable map of feature families ({@code world}, {@code pregenerate}, {@code data},
+ * {@code doctor}, {@code performance}) is tried first. Anything the map does not recognise falls back
+ * to the legacy {@link EarthCommand}, which still owns the geographic commands and the
+ * not-yet-migrated admin verbs. The legacy path sends its own messages directly to the sender (as it
+ * always has), so it returns {@link CommandResult#NONE} here rather than a duplicate copy of what it
+ * already sent.
  */
 public final class EarthCommandRouter {
     private final EarthCommand legacy;
     private final Map<String, EarthSubcommand> families;
 
-    public EarthCommandRouter(EarthCommand legacy, WorldCommandHandler worldHandler) {
+    public EarthCommandRouter(EarthCommand legacy, WorldCommandHandler worldHandler,
+            PregenerationCommandHandler pregenerationHandler, DataCommandHandler dataHandler,
+            DoctorCommandHandler doctorHandler, PerformanceCommandHandler performanceHandler) {
         this.legacy = legacy;
         Map<String, EarthSubcommand> map = new LinkedHashMap<>();
         map.put("world", worldHandler);
+        map.put("pregenerate", pregenerationHandler);
+        map.put("data", dataHandler);
+        map.put("doctor", doctorHandler);
+        map.put("performance", performanceHandler);
         this.families = Map.copyOf(map);
     }
 
