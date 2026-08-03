@@ -30,7 +30,14 @@ import java.util.Set;
  */
 public final class BootstrapDatapackService {
     static final String DATAPACK_DIRECTORY_NAME = "terraforge-earth-height";
-    static final String DATAPACK_ID = "earth-height";
+
+    /**
+     * The id passed to {@link DatapackRegistrar#discoverPack}; Paper combines it with the plugin name
+     * to form the datapack's registered name, {@code "TerraForge/" + DATAPACK_ID}. {@link
+     * dev.terraforge.plugin.world.ManagedWorldStartupVerifier} looks the running pack up by that
+     * combined name via {@code Server#getDatapackManager()}.
+     */
+    public static final String DATAPACK_ID = "earth-height";
 
     public void discover(Path pluginDataDirectory, DatapackRegistrar registrar) throws IOException {
         var manifest = new ManagedWorldManifestStore(pluginDataDirectory).load();

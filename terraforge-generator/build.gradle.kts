@@ -9,4 +9,5 @@ dependencies {
     implementation(project(":terraforge-geo"))
     compileOnly("io.papermc.paper:paper-api:$paperVersion")
     testCompileOnly("io.papermc.paper:paper-api:$paperVersion")
+    testRuntimeOnly("io.papermc.paper:paper-api:$paperVersion")
 }

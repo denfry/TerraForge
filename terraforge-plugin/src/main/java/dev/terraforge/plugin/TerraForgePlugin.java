@@ -23,7 +23,14 @@ import dev.terraforge.geo.karst.SqliteKarstProvider;
 import dev.terraforge.geo.marker.GeoMarkerPopulator;
 import dev.terraforge.geo.water.IndexedWaterProvider;
 import dev.terraforge.geo.water.SqliteWaterProvider;
+import dev.terraforge.generator.TerraForgeChunkGenerator;
 import dev.terraforge.generator.TerrainStack;
+import dev.terraforge.plugin.world.BootstrapDatapackService;
+import dev.terraforge.plugin.world.LiveWorldSnapshot;
+import dev.terraforge.plugin.world.LiveWorldVerifier;
+import dev.terraforge.plugin.world.ManagedWorldManifest;
+import dev.terraforge.plugin.world.ManagedWorldManifestStore;
+import dev.terraforge.plugin.world.ManagedWorldStartupVerifier;
 import dev.terraforge.towny.SqliteTownGeoService;
 import dev.terraforge.towny.TownGeoListener;
 import java.io.IOException;
@@ -65,6 +72,10 @@ public final class TerraForgePlugin extends JavaPlugin {
     private InMemoryGeoMarkerService markers;
     private TerraForgeBlueMapHook blueMap;
     private DebugOverlay debugOverlay;
+    private boolean managedWorldReady;
+
+    /** The full name Paper registers the bootstrap-discovered height pack under: plugin name + id. */
+    private static final String MANAGED_DATAPACK_NAME = "TerraForge/" + BootstrapDatapackService.DATAPACK_ID;
 
     @Override
     public void onEnable() {
@@ -84,6 +95,7 @@ public final class TerraForgePlugin extends JavaPlugin {
         initializeTownyIntegration();
         initializeBlueMapIntegration();
         initializeMetrics();
+        verifyManagedWorldOnStartup();
         var earthCommand = getCommand("earth");
         if (earthCommand == null) {
             throw new IllegalStateException("plugin.yml is missing the earth command");
@@ -216,6 +228,60 @@ public final class TerraForgePlugin extends JavaPlugin {
             return null;
         }
         return terrain.chunkGenerator();
+    }
+
+    /**
+     * Verifies a staged managed Earth world against the live server before any managed operation is
+     * allowed to touch it.
+     *
+     * <p>A manifest in {@code PENDING_RESTART}, {@code CREATING} or {@code READY} means TerraForge
+     * previously staged (or already verified) a primary {@code earth} world -- exactly the states
+     * {@link BootstrapDatapackService} discovers a datapack for, so if the server got this far with
+     * such a manifest present, the datapack fingerprint was already fail-closed verified at bootstrap.
+     * This step covers what bootstrap cannot see: the live world's identity, generator, height and
+     * enabled datapack. No manifest, or one that is {@code ABSENT}/{@code INVALID}, leaves managed
+     * operations disabled without touching the file.
+     */
+    private void verifyManagedWorldOnStartup() {
+        var manifests = new ManagedWorldManifestStore(getDataFolder().toPath());
+        var verifier = new ManagedWorldStartupVerifier(manifests, new LiveWorldVerifier());
+        try {
+            managedWorldReady = verifier.verifyOnEnable(this::captureLiveWorldSnapshot,
+                    failure -> getLogger().severe(LOG_PREFIX + "Managed Earth verification failed: " + failure));
+        } catch (IOException exception) {
+            getLogger().severe(LOG_PREFIX + "Managed Earth verification could not run: " + exception.getMessage());
+            managedWorldReady = false;
+        }
+        if (!managedWorldReady) {
+            getLogger().warning(LOG_PREFIX + "Managed Earth world is not verified; managed pregeneration and "
+                    + "world commands stay disabled until the world is re-staged.");
+        }
+    }
+
+    /**
+     * Reads what {@link ManagedWorldStartupVerifier} needs from the live server for one manifest.
+     *
+     * <p>Config and data fingerprints have no live recomputation yet -- that lands with the staging
+     * command that first produces them -- so they pass the manifest's own recorded value through, which
+     * still exercises every other check (name, primary-world identity, generator, height, datapack).
+     */
+    private LiveWorldSnapshot captureLiveWorldSnapshot(ManagedWorldManifest manifest) {
+        org.bukkit.World world = getServer().getWorld(manifest.worldName());
+        if (world == null) {
+            return new LiveWorldSnapshot("", false, false, 0, 0, false, "", "", "");
+        }
+        boolean primary = !getServer().getWorlds().isEmpty() && getServer().getWorlds().get(0).equals(world);
+        boolean terraForgeGenerator = world.getGenerator() instanceof TerraForgeChunkGenerator;
+        var datapack = getServer().getDatapackManager().getPack(MANAGED_DATAPACK_NAME);
+        boolean datapackEnabled = datapack != null && datapack.isEnabled();
+        return new LiveWorldSnapshot(world.getName(), primary, terraForgeGenerator, world.getMinHeight(),
+                world.getMaxHeight(), datapackEnabled, manifest.configFingerprint(), manifest.dataFingerprint(),
+                manifest.datapackFingerprint());
+    }
+
+    /** True once the managed Earth world has been verified against the live server this run. */
+    public boolean managedWorldReady() {
+        return managedWorldReady;
     }
 
     void validateConfigurationForReload() throws IOException {
