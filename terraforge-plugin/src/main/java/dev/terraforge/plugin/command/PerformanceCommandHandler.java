@@ -18,14 +18,18 @@ public final class PerformanceCommandHandler implements EarthSubcommand {
     public CommandResult execute(CommandSender sender, List<String> args) {
         if (!sender.hasPermission(PERMISSION)) return CommandResult.denied();
         if (!args.isEmpty()) return usage();
-        CommandResult.Builder builder = CommandResult.builder();
-        builder.line(CommandResult.Level.INFO, "TPS: " + fmt(context.tps()) + "  MSPT: " + fmt(context.mspt())
-                + "  Online players: " + context.onlinePlayers() + "  Usable disk: "
-                + context.usableDiskGb() + " GB");
-        builder.line(CommandResult.Level.INFO, "Pregeneration: state="
-                + context.pregenerationState().orElse("none") + " in-flight="
-                + context.pregenerationInFlight().map(String::valueOf).orElse("n/a"));
-        return builder.build();
+        try {
+            CommandResult.Builder builder = CommandResult.builder();
+            builder.line(CommandResult.Level.INFO, "TPS: " + fmt(context.tps()) + "  MSPT: " + fmt(context.mspt())
+                    + "  Online players: " + context.onlinePlayers() + "  Usable disk: "
+                    + context.usableDiskGb() + " GB");
+            builder.line(CommandResult.Level.INFO, "Pregeneration: state="
+                    + context.pregenerationState().orElse("none") + " in-flight="
+                    + context.pregenerationInFlight().map(String::valueOf).orElse("n/a"));
+            return builder.build();
+        } catch (RuntimeException exception) {
+            return CommandResult.sanitizedError(sender, exception, "Reading performance status");
+        }
     }
 
     @Override

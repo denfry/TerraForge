@@ -151,6 +151,33 @@ class WorldCommandHandlerTest {
         assertThat(result.lines()).hasSizeGreaterThan(1);
     }
 
+    @Test void verifyNotifiesTheContextOfASuccessfulResult() throws IOException {
+        ManagedWorldService service = new ManagedWorldService(pluginRoot());
+        service.stage(planFor(executableEnvironment()));
+        List<Boolean> notified = new java.util.ArrayList<>();
+        WorldCommandContext ctx = contextWithVerifyListener(executableEnvironment(), service,
+                matchingSnapshotFactory(), notified::add);
+        WorldCommandHandler handler = new WorldCommandHandler(ctx);
+
+        handler.execute(sender(true), List.of("verify"));
+
+        assertThat(notified).containsExactly(true);
+    }
+
+    @Test void verifyNotifiesTheContextOfAFailedResult() throws IOException {
+        ManagedWorldService service = new ManagedWorldService(pluginRoot());
+        service.stage(planFor(executableEnvironment()));
+        Function<ManagedWorldManifest, LiveWorldSnapshot> mismatched = manifest ->
+                new LiveWorldSnapshot("spawn", false, false, 0, 0, false, "z".repeat(64), "z".repeat(64), "z".repeat(64));
+        List<Boolean> notified = new java.util.ArrayList<>();
+        WorldCommandContext ctx = contextWithVerifyListener(executableEnvironment(), service, mismatched, notified::add);
+        WorldCommandHandler handler = new WorldCommandHandler(ctx);
+
+        handler.execute(sender(true), List.of("verify"));
+
+        assertThat(notified).containsExactly(false);
+    }
+
     @Test void abortRemovesAStagedWorldAndItsManifest() throws IOException {
         var manifests = new ManagedWorldManifestStore(pluginRoot());
         ManagedWorldService service = new ManagedWorldService(pluginRoot());
@@ -215,6 +242,24 @@ class WorldCommandHandlerTest {
             @Override public Path serverRoot() { return serverRoot; }
             @Override public Path worldContainer() { return serverRoot.resolve("world"); }
             @Override public Function<ManagedWorldManifest, LiveWorldSnapshot> liveSnapshotFactory() { return snapshotFactory; }
+        };
+    }
+
+    private WorldCommandContext contextWithVerifyListener(ManagedWorldEnvironment environment, ManagedWorldService service,
+            Function<ManagedWorldManifest, LiveWorldSnapshot> snapshotFactory, java.util.function.Consumer<Boolean> onVerifyResult) {
+        Path dem = demDirectory();
+        return new WorldCommandContext() {
+            @Override public ManagedWorldService service() { return service; }
+            @Override public ManagedWorldEnvironment environment() { return environment; }
+            @Override public String configuredWorldName() { return "earth"; }
+            @Override public long minimumFreeDiskGb() { return 10; }
+            @Override public VerticalProfile verticalProfile() { return VerticalProfile.regional(); }
+            @Override public Path demDirectory() { return dem; }
+            @Override public PaperWorldSettingsEditor.ChunkSettings chunkSettings() { return CHUNK_SETTINGS; }
+            @Override public Path serverRoot() { return serverRoot; }
+            @Override public Path worldContainer() { return serverRoot.resolve("world"); }
+            @Override public Function<ManagedWorldManifest, LiveWorldSnapshot> liveSnapshotFactory() { return snapshotFactory; }
+            @Override public void onVerifyResult(boolean ready) { onVerifyResult.accept(ready); }
         };
     }
 

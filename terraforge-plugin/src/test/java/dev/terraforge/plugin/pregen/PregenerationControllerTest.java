@@ -291,6 +291,86 @@ class PregenerationControllerTest {
         assertThat(status.completed()).isEqualTo(1);
     }
 
+    @Test
+    void spiralDispatchIsOffsetByCenterAndBoundedBySpec() {
+        // Center is far off the origin and the radius is not a multiple of 16, so the derived chunk
+        // bounds are not symmetric around the center chunk and totalChunks isn't a perfect square --
+        // exactly the case where a spiral hardcoded around (0,0) and gated only on raw ordinal count
+        // would dispatch the wrong chunks.
+        PregenerationSpec spec = PregenerationSpec.around(37 * 16 + 5, -53 * 16 - 3, 40);
+        List<int[]> dispatched = new java.util.ArrayList<>();
+        ChunkGenerationPort port = new ChunkGenerationPort() {
+            @Override
+            public boolean isChunkGenerated(int chunkX, int chunkZ) {
+                return false;
+            }
+
+            @Override
+            public CompletableFuture<Boolean> loadOrGenerate(int chunkX, int chunkZ) {
+                dispatched.add(new int[] {chunkX, chunkZ});
+                return CompletableFuture.completedFuture(true);
+            }
+        };
+        PregenerationCheckpoint initial = new PregenerationCheckpoint(PregenerationCheckpoint.SCHEMA_VERSION,
+                spec, 0, 0, 0, 0, PregenerationState.PAUSED, "test", HASH, HASH, 0);
+        var controller = new PregenerationController(port, healthyPolicy(),
+                PregenerationControllerTest::healthySnapshot, store(), Runnable::run,
+                Clock.fixed(Instant.EPOCH, ZoneOffset.UTC), 1, 128, initial, LOGGER);
+
+        controller.resume();
+
+        assertThat(controller.status().orElseThrow().state()).isEqualTo(PregenerationState.COMPLETED);
+        assertThat(dispatched).hasSize((int) spec.totalChunks());
+        for (int[] chunk : dispatched) {
+            assertThat(chunk[0]).isBetween(spec.minChunkX(), spec.maxChunkX());
+            assertThat(chunk[1]).isBetween(spec.minChunkZ(), spec.maxChunkZ());
+        }
+        assertThat(dispatched.stream().map(c -> c[0] + "," + c[1]).distinct().count())
+                .isEqualTo(dispatched.size());
+        // The requested region is nowhere near the origin, so chunk (0,0) -- what a spiral hardcoded
+        // around the wrong center would dispatch first -- must never appear.
+        assertThat(dispatched.stream().anyMatch(c -> c[0] == 0 && c[1] == 0)).isFalse();
+    }
+
+    @Test
+    void reevaluateHealthIsNoopWhenNotAutoPaused() {
+        var port = new ControllableFakePort(Set.of());
+        var controller = controller(port, store(), Runnable::run, 1, 128); // starts PAUSED
+
+        controller.reevaluateHealth();
+
+        assertThat(controller.status().orElseThrow().state()).isEqualTo(PregenerationState.PAUSED);
+        assertThat(port.loadOrGenerateCalls.get()).isZero();
+    }
+
+    @Test
+    void reevaluateHealthResumesAnAutoPausedJobOnceHealthRecovers() {
+        var port = new ControllableFakePort(Set.of());
+        var store = store();
+        AtomicInteger tps = new AtomicInteger(5); // below the configured minimum of 18
+        ServerHealthPolicy policy = new ServerHealthPolicy(true, 18, 40, 10, 0);
+        PregenerationCheckpoint initial = new PregenerationCheckpoint(PregenerationCheckpoint.SCHEMA_VERSION,
+                smallSpec(), 0, 0, 0, 0, PregenerationState.PAUSED, "test", HASH, HASH, 0);
+        var controller = new PregenerationController(port, policy,
+                () -> new ServerHealthSnapshot(0, tps.get(), 20, 20, true, false, false),
+                store, Runnable::run, Clock.fixed(Instant.EPOCH, ZoneOffset.UTC), 1, 128, initial, LOGGER);
+
+        controller.resume();
+        assertThat(controller.status().orElseThrow().state()).isEqualTo(PregenerationState.AUTO_PAUSED);
+        assertThat(controller.status().orElseThrow().pauseReason()).isEqualTo("low-tps");
+
+        // A periodic re-check while still unhealthy must leave the job paused, not thrash it.
+        controller.reevaluateHealth();
+        assertThat(controller.status().orElseThrow().state()).isEqualTo(PregenerationState.AUTO_PAUSED);
+        assertThat(port.loadOrGenerateCalls.get()).isZero();
+
+        tps.set(20);
+        controller.reevaluateHealth();
+
+        assertThat(controller.status().orElseThrow().state()).isEqualTo(PregenerationState.RUNNING);
+        assertThat(port.loadOrGenerateCalls.get()).isEqualTo(1);
+    }
+
     private static void await(CountDownLatch latch) {
         try {
             latch.await();

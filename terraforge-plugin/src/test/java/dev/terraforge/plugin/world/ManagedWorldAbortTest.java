@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -24,6 +25,40 @@ class ManagedWorldAbortTest {
 
         new ManagedWorldAbort(manifests).abort(serverRoot, serverRoot.resolve("world"));
 
+        assertThat(Files.exists(earth)).isFalse();
+        assertThat(manifests.load()).isEmpty();
+    }
+
+    @Test void abortRestoresServerPropertiesAndBukkitYmlFromTheirStagingBackups() throws Exception {
+        var manifests = new ManagedWorldManifestStore(pluginRoot());
+        Path earth = earthDir();
+        Files.createDirectories(earth);
+        Files.writeString(earth.resolve(ManagedWorldAbort.MARKER_FILE_NAME), "staged\n");
+
+        Path serverProperties = serverRoot.resolve("server.properties");
+        Path bukkitYml = serverRoot.resolve("bukkit.yml");
+        byte[] originalServerProperties = "level-name=spawn\nmax-players=20\n".getBytes(StandardCharsets.UTF_8);
+        byte[] originalBukkitYml = "worlds: {}\n".getBytes(StandardCharsets.UTF_8);
+        Files.write(serverProperties, originalServerProperties);
+        Files.write(bukkitYml, originalBukkitYml);
+
+        // Mirrors exactly what ManagedWorldStager does: back up the original bytes via
+        // WorldStagingTransaction, then apply the "earth" edits on top.
+        Path backupRoot = serverRoot.resolve("plugins/TerraForge/managed-world-backups");
+        List<PlannedEdit> edits = List.of(
+                new PlannedEdit(serverProperties, originalServerProperties,
+                        "level-name=earth\nmax-players=20\n".getBytes(StandardCharsets.UTF_8)),
+                new PlannedEdit(bukkitYml, originalBukkitYml,
+                        "worlds:\n  earth:\n    generator: TerraForge\n".getBytes(StandardCharsets.UTF_8)));
+        new WorldStagingTransaction().commit(edits, backupRoot);
+        assertThat(Files.readString(serverProperties)).isEqualTo("level-name=earth\nmax-players=20\n");
+
+        manifests.save(manifest(List.of()));
+
+        new ManagedWorldAbort(manifests).abort(serverRoot, serverRoot.resolve("world"));
+
+        assertThat(Files.readAllBytes(serverProperties)).isEqualTo(originalServerProperties);
+        assertThat(Files.readAllBytes(bukkitYml)).isEqualTo(originalBukkitYml);
         assertThat(Files.exists(earth)).isFalse();
         assertThat(manifests.load()).isEmpty();
     }

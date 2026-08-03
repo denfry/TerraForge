@@ -38,15 +38,19 @@ public final class PregenerationCommandHandler implements EarthSubcommand {
         if (!sender.hasPermission(PERMISSION)) return CommandResult.denied();
         if (args.isEmpty()) return usage();
         List<String> rest = args.subList(1, args.size());
-        return switch (args.get(0).toLowerCase(Locale.ROOT)) {
-            case "start" -> start(rest);
-            case "full" -> full(rest);
-            case "pause" -> noArgs(rest, this::pause);
-            case "resume" -> noArgs(rest, this::resume);
-            case "status" -> noArgs(rest, this::status);
-            case "cancel" -> noArgs(rest, this::cancel);
-            default -> usage();
-        };
+        try {
+            return switch (args.get(0).toLowerCase(Locale.ROOT)) {
+                case "start" -> start(rest);
+                case "full" -> full(rest);
+                case "pause" -> noArgs(rest, this::pause);
+                case "resume" -> noArgs(rest, this::resume);
+                case "status" -> noArgs(rest, this::status);
+                case "cancel" -> noArgs(rest, this::cancel);
+                default -> usage();
+            };
+        } catch (RuntimeException exception) {
+            return CommandResult.sanitizedError(sender, exception, "Pregeneration command");
+        }
     }
 
     @Override

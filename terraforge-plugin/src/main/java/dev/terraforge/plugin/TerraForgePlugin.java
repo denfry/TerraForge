@@ -50,6 +50,7 @@ import dev.terraforge.plugin.world.BootstrapDatapackService;
 import dev.terraforge.plugin.world.BukkitManagedWorldEnvironment;
 import dev.terraforge.plugin.world.DemCorruptionCache;
 import dev.terraforge.plugin.world.DemDataFingerprint;
+import dev.terraforge.plugin.world.DemFingerprintCache;
 import dev.terraforge.plugin.world.LiveWorldSnapshot;
 import dev.terraforge.plugin.world.LiveWorldVerifier;
 import dev.terraforge.plugin.world.ManagedWorldEnvironment;
@@ -107,7 +108,15 @@ public final class TerraForgePlugin extends JavaPlugin {
     private DebugOverlay debugOverlay;
     private boolean managedWorldReady;
     private DemCorruptionCache demCorruptionCache;
+    private DemFingerprintCache demFingerprintCache;
+    private org.bukkit.scheduler.BukkitTask pregenerationHealthCheckTask;
     private final Executor asyncExecutor = task -> getServer().getScheduler().runTaskAsynchronously(this, task);
+
+    /** How often {@link PregenerationController#reevaluateHealth()} is polled on a repeating task, so
+     *  an AUTO_PAUSED job (including one stuck waiting out the health policy's stability window) is
+     *  re-checked and automatically resumed once conditions recover, rather than staying paused forever
+     *  until an operator happens to call resume() again. */
+    private static final long PREGENERATION_HEALTH_RECHECK_INTERVAL_TICKS = 100L;
 
     /** The full name Paper registers the bootstrap-discovered height pack under: plugin name + id. */
     private static final String MANAGED_DATAPACK_NAME = "TerraForge/" + BootstrapDatapackService.DATAPACK_ID;
@@ -186,6 +195,7 @@ public final class TerraForgePlugin extends JavaPlugin {
         }
         this.elevation = new DemElevationProvider(demReader, cacheManager, config.cache().demTileCacheEntries());
         this.demCorruptionCache = new DemCorruptionCache(demReader.directory(), this::preparedTileCount);
+        this.demFingerprintCache = new DemFingerprintCache(demReader.directory());
 
         this.terrain = TerrainStack.create(config, transformer, verticalScale, elevation, cacheManager,
                 loadWaterProvider(), loadLandcoverProvider(), loadKarstProvider());
@@ -194,6 +204,10 @@ public final class TerraForgePlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (pregenerationHealthCheckTask != null) {
+            pregenerationHealthCheckTask.cancel();
+            pregenerationHealthCheckTask = null;
+        }
         if (pregenerationAdapter != null) {
             pregenerationAdapter.markShuttingDown();
         }
@@ -349,6 +363,14 @@ public final class TerraForgePlugin extends JavaPlugin {
         this.pregenerationController = new PregenerationController(adapter, healthPolicy, adapter::snapshot,
                 store, adapter.mainThreadExecutor(), Clock.systemUTC(), pregenerationConfig.maxInFlight(),
                 pregenerationConfig.checkpointEveryChunks(), loaded, getLogger());
+        // Documented "automatic pause/resume" behaviour requires something to periodically re-check
+        // health for an AUTO_PAUSED job: pump() otherwise only re-enters via resume() or a completion
+        // callback (which early-returns once paused), so a job that auto-paused -- including one that
+        // landed back in the health policy's stability window right after a manual resume() -- would
+        // never be re-evaluated and would stay paused forever.
+        this.pregenerationHealthCheckTask = getServer().getScheduler().runTaskTimer(this,
+                pregenerationController::reevaluateHealth,
+                PREGENERATION_HEALTH_RECHECK_INTERVAL_TICKS, PREGENERATION_HEALTH_RECHECK_INTERVAL_TICKS);
     }
 
     /** The bounded pregeneration controller, present once the managed Earth world is verified and loaded. */
@@ -375,7 +397,10 @@ public final class TerraForgePlugin extends JavaPlugin {
         var datapack = getServer().getDatapackManager().getPack(MANAGED_DATAPACK_NAME);
         boolean datapackEnabled = datapack != null && datapack.isEnabled();
         String configFingerprint = VerticalProfile.from(config.terrain()).fingerprint();
-        String dataFingerprint = DemDataFingerprint.of(demReader.directory());
+        // Never walks the DEM directory on this (command/startup) thread -- reads whatever the cache
+        // last computed and kicks a background recompute for the next call to pick up.
+        demFingerprintCache.refreshAsync(asyncExecutor);
+        String dataFingerprint = demFingerprintCache.currentFingerprint();
         return new LiveWorldSnapshot(world.getName(), primary, terraForgeGenerator, world.getMinHeight(),
                 world.getMaxHeight(), datapackEnabled, configFingerprint, dataFingerprint,
                 manifest.datapackFingerprint());
@@ -410,6 +435,13 @@ public final class TerraForgePlugin extends JavaPlugin {
         @Override public Function<ManagedWorldManifest, LiveWorldSnapshot> liveSnapshotFactory() {
             return TerraForgePlugin.this::captureLiveWorldSnapshot;
         }
+
+        @Override public void onVerifyResult(boolean ready) {
+            // Reflect an on-demand verify()'s verdict immediately: otherwise a world just marked
+            // INVALID would still read as ready until the next restart, letting pregeneration keep
+            // running against it.
+            managedWorldReady = ready;
+        }
     }
 
     /** Wires {@code PregenerationCommandHandler} to this plugin's live pregeneration state. */
@@ -418,7 +450,12 @@ public final class TerraForgePlugin extends JavaPlugin {
         @Override public Optional<PregenerationController> controller() { return pregenerationController(); }
         @Override public PregenerationSpec fullRegionSpec() { return TerraForgePlugin.this.fullRegionSpec(); }
         @Override public String currentConfigFingerprint() { return VerticalProfile.from(config.terrain()).fingerprint(); }
-        @Override public String currentDataFingerprint() { return DemDataFingerprint.of(demReader.directory()); }
+        @Override public String currentDataFingerprint() {
+            // Task 14's security review forbids a server-thread GIS/DEM directory walk from command
+            // handling; read the cached fingerprint and kick a background recompute instead.
+            demFingerprintCache.refreshAsync(asyncExecutor);
+            return demFingerprintCache.currentFingerprint();
+        }
         @Override public ServerHealthSnapshot currentHealth() {
             return pregenerationAdapter != null ? pregenerationAdapter.snapshot()
                     : new ServerHealthSnapshot(getServer().getOnlinePlayers().size(), getServer().getTPS()[0],

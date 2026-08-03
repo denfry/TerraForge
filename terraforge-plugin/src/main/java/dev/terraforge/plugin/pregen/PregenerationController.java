@@ -100,6 +100,35 @@ public final class PregenerationController {
         });
     }
 
+    /**
+     * Re-checks {@link ServerHealthPolicy} for a job that is currently {@code AUTO_PAUSED} and resumes
+     * it once the policy allows dispatch again; a no-op in every other state (including a manually
+     * {@code PAUSED} job, which must stay paused until an operator explicitly resumes it).
+     *
+     * <p>Intended to be called periodically (e.g. from a repeating scheduler task) rather than only in
+     * response to a completion callback or an explicit {@link #resume()} call: without a periodic
+     * caller, a job that auto-paused for a transient reason (or that landed back in the health policy's
+     * stability window after a manual {@link #resume()}) would never be re-evaluated and would stay
+     * auto-paused forever. Each call only ever flips the job to {@code RUNNING} when the policy already
+     * reports {@code mayDispatch()}, so it can never thrash the state by resuming and immediately
+     * auto-pausing again in the same call.
+     */
+    public void reevaluateHealth() {
+        callbackExecutor.execute(() -> {
+            if (checkpoint == null || checkpoint.state() != PregenerationState.AUTO_PAUSED) {
+                return;
+            }
+            ServerHealthPolicy.HealthDecision decision =
+                    healthPolicy.evaluate(snapshotSupplier.get(), clock.instant());
+            if (!decision.mayDispatch()) {
+                return;
+            }
+            checkpoint = checkpoint.withState(PregenerationState.RUNNING, "auto-resumed", clock.millis());
+            saveCheckpoint();
+            pump();
+        });
+    }
+
     /** Manually pauses a running job. In-flight futures still complete; their callbacks just stop re-dispatching. */
     public void pause(String reason) {
         callbackExecutor.execute(() -> {
@@ -152,7 +181,7 @@ public final class PregenerationController {
                 // while this frame was still on the stack. Don't act on stale state.
                 return;
             }
-            if (checkpoint.cursorOrdinal() >= checkpoint.spec().totalChunks()) {
+            if (processedCount() >= checkpoint.spec().totalChunks()) {
                 completeJob();
                 return;
             }
@@ -166,9 +195,29 @@ public final class PregenerationController {
         }
     }
 
+    /** Completed + skipped + failed chunks so far -- the only count that can equal {@code totalChunks},
+     *  since the spiral's raw ordinal advances past chunks outside a non-square requested region too. */
+    private long processedCount() {
+        return checkpoint.completed() + checkpoint.skipped() + checkpoint.failed();
+    }
+
     private void dispatchNext() {
-        SpiralCursor.Chunk target = SpiralCursor.at(checkpoint.cursorOrdinal());
-        advanceCursor();
+        PregenerationSpec spec = checkpoint.spec();
+        SpiralCursor.Chunk target;
+        while (true) {
+            SpiralCursor.Chunk relative = SpiralCursor.at(checkpoint.cursorOrdinal());
+            SpiralCursor.Chunk candidate = new SpiralCursor.Chunk(
+                    relative.x() + spec.centerChunkX(), relative.z() + spec.centerChunkZ());
+            advanceCursor();
+            if (spec.contains(candidate)) {
+                target = candidate;
+                break;
+            }
+            // The square spiral steps outside a non-square/off-16-aligned requested region; skip that
+            // ordinal without counting it as completed/skipped/failed and keep walking the spiral. The
+            // region is finite and the spiral is unbounded and never repeats a chunk, so this always
+            // terminates once an unprocessed in-bounds chunk remains.
+        }
         if (port.isChunkGenerated(target.x(), target.z())) {
             checkpoint = new PregenerationCheckpoint(checkpoint.schemaVersion(), checkpoint.spec(),
                     checkpoint.cursorOrdinal(), checkpoint.completed(), checkpoint.skipped() + 1,

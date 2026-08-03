@@ -1,5 +1,6 @@
 package dev.terraforge.plugin.world;
 
+import dev.terraforge.plugin.io.SafePathResolver;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -8,7 +9,13 @@ import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
 
-/** Deletes a staged-but-not-yet-created earth world only when TerraForge provably owns every entry inside it. */
+/**
+ * Deletes a staged-but-not-yet-created earth world only when TerraForge provably owns every entry
+ * inside it, and restores every server file {@link ManagedWorldStager} edited (e.g. {@code
+ * server.properties}, {@code bukkit.yml}) from the backups {@link WorldStagingTransaction#commit}
+ * recorded when staging began -- otherwise a restart after abort would silently keep pointing at a
+ * primary {@code earth} world that no longer exists.
+ */
 public final class ManagedWorldAbort {
     public static final String MARKER_FILE_NAME = ".terraforge-staging";
     private static final Set<String> FORBIDDEN_TOP_LEVEL_ENTRIES = Set.of("level.dat", "uid.dat", "region", "entities", "poi");
@@ -45,6 +52,13 @@ public final class ManagedWorldAbort {
         Path markerRelative = Path.of(MARKER_FILE_NAME);
 
         verifyExactOwnership(earth, allowedRelativeFiles, markerRelative);
+
+        // Restore server.properties/bukkit.yml/etc. to their pre-staging bytes before the staged
+        // directory and manifest are removed, reusing the same backups WorldStagingTransaction wrote
+        // when staging began (retained on disk until the manifest reaches READY).
+        Path backupRoot = SafePathResolver.resolve(realServerRoot,
+                Path.of("plugins", "TerraForge", "managed-world-backups"));
+        new WorldStagingTransaction().restore(backupRoot);
 
         deleteRecursively(earth);
         manifests.delete();

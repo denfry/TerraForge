@@ -7,7 +7,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import org.bukkit.command.CommandSender;
-import org.bukkit.command.ConsoleCommandSender;
 
 /**
  * Routes {@code /earth world plan|create|status|verify|abort} to {@link dev.terraforge.plugin.world.ManagedWorldService}.
@@ -58,7 +57,7 @@ public final class WorldCommandHandler implements EarthSubcommand {
             WorldCreationPlan plan = buildPlan();
             return planReport(plan);
         } catch (RuntimeException exception) {
-            return sanitize(sender, exception, "Planning");
+            return CommandResult.sanitizedError(sender, exception, "Planning");
         }
     }
 
@@ -74,7 +73,7 @@ public final class WorldCommandHandler implements EarthSubcommand {
             context.service().stage(plan);
             return CommandResult.success("Managed Earth world staged; restart the server to create it.");
         } catch (IOException | RuntimeException exception) {
-            return sanitize(sender, exception, "Staging");
+            return CommandResult.sanitizedError(sender, exception, "Staging");
         }
     }
 
@@ -82,7 +81,7 @@ public final class WorldCommandHandler implements EarthSubcommand {
         try {
             return CommandResult.info("Managed Earth: " + context.service().status());
         } catch (IOException | RuntimeException exception) {
-            return sanitize(sender, exception, "Reading managed Earth status");
+            return CommandResult.sanitizedError(sender, exception, "Reading managed Earth status");
         }
     }
 
@@ -90,13 +89,17 @@ public final class WorldCommandHandler implements EarthSubcommand {
         try {
             List<String> failures = new ArrayList<>();
             boolean ready = context.service().verify(context.liveSnapshotFactory(), failures::add);
+            // The plugin's cached readiness gate must reflect a fresh INVALID/READY verdict immediately,
+            // not just on the next restart -- otherwise pregeneration could keep running against a world
+            // this very call just marked invalid.
+            context.onVerifyResult(ready);
             if (ready) return CommandResult.success("Managed Earth world verified against the live server.");
             CommandResult.Builder builder = CommandResult.builder();
             builder.line(CommandResult.Level.ERROR, "Managed Earth world failed verification:");
             failures.forEach(failure -> builder.line(CommandResult.Level.WARNING, "- " + failure));
             return builder.build();
         } catch (IOException | RuntimeException exception) {
-            return sanitize(sender, exception, "Verifying the managed Earth world");
+            return CommandResult.sanitizedError(sender, exception, "Verifying the managed Earth world");
         }
     }
 
@@ -105,7 +108,7 @@ public final class WorldCommandHandler implements EarthSubcommand {
             context.service().abort(context.serverRoot(), context.worldContainer());
             return CommandResult.success("Staged managed Earth world removed.");
         } catch (IOException | RuntimeException exception) {
-            return sanitize(sender, exception, "Aborting the staged managed Earth world");
+            return CommandResult.sanitizedError(sender, exception, "Aborting the staged managed Earth world");
         }
     }
 
@@ -129,19 +132,6 @@ public final class WorldCommandHandler implements EarthSubcommand {
             builder.line(check.passed() ? CommandResult.Level.SUCCESS : CommandResult.Level.WARNING,
                     (check.passed() ? "[ok] " : "[fail] ") + check.name() + ": " + check.detail());
         }
-    }
-
-    /**
-     * Console operators already have full filesystem access and read TerraForge's own logs, so seeing
-     * an exception's message there is not a disclosure; every other sender (players, command blocks,
-     * plugins invoking the command programmatically) gets a generic pointer to the console log instead,
-     * so a stack trace or a server-root path is never echoed into chat.
-     */
-    private static CommandResult sanitize(CommandSender sender, Exception exception, String action) {
-        if (sender instanceof ConsoleCommandSender) {
-            return CommandResult.error(action + " failed: " + exception.getMessage());
-        }
-        return CommandResult.error(action + " failed; see the console log for details.");
     }
 
     private CommandResult usage() {

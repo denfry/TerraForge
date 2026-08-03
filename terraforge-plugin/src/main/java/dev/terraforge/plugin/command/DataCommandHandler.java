@@ -24,7 +24,11 @@ public final class DataCommandHandler implements EarthSubcommand {
     public CommandResult execute(CommandSender sender, List<String> args) {
         if (!sender.hasPermission(PERMISSION)) return CommandResult.denied();
         if (args.size() != 1 || !"status".equals(args.get(0).toLowerCase(Locale.ROOT))) return usage();
-        return status();
+        try {
+            return status();
+        } catch (RuntimeException exception) {
+            return CommandResult.sanitizedError(sender, exception, "Reading DEM data status");
+        }
     }
 
     @Override

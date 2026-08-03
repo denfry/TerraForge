@@ -18,16 +18,20 @@ public final class DoctorCommandHandler implements EarthSubcommand {
     public CommandResult execute(CommandSender sender, List<String> args) {
         if (!sender.hasPermission(PERMISSION)) return CommandResult.denied();
         if (!args.isEmpty()) return usage();
-        List<WorldCreationCheck> checks = context.diagnose();
-        CommandResult.Builder builder = CommandResult.builder();
-        for (WorldCreationCheck check : checks) {
-            builder.line(check.passed() ? CommandResult.Level.SUCCESS : CommandResult.Level.WARNING,
-                    (check.passed() ? "[ok] " : "[fail] ") + check.name() + ": " + check.detail());
+        try {
+            List<WorldCreationCheck> checks = context.diagnose();
+            CommandResult.Builder builder = CommandResult.builder();
+            for (WorldCreationCheck check : checks) {
+                builder.line(check.passed() ? CommandResult.Level.SUCCESS : CommandResult.Level.WARNING,
+                        (check.passed() ? "[ok] " : "[fail] ") + check.name() + ": " + check.detail());
+            }
+            boolean allPassed = checks.stream().allMatch(WorldCreationCheck::passed);
+            builder.line(allPassed ? CommandResult.Level.SUCCESS : CommandResult.Level.ERROR,
+                    allPassed ? "TerraForge is healthy." : "TerraForge found problems; see above.");
+            return builder.build();
+        } catch (RuntimeException exception) {
+            return CommandResult.sanitizedError(sender, exception, "Running diagnostics");
         }
-        boolean allPassed = checks.stream().allMatch(WorldCreationCheck::passed);
-        builder.line(allPassed ? CommandResult.Level.SUCCESS : CommandResult.Level.ERROR,
-                allPassed ? "TerraForge is healthy." : "TerraForge found problems; see above.");
-        return builder.build();
     }
 
     @Override

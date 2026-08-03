@@ -41,4 +41,14 @@ public record PregenerationSpec(int centerBlockX, int centerBlockZ, int radiusBl
         return chunk.x() >= minChunkX && chunk.x() <= maxChunkX
                 && chunk.z() >= minChunkZ && chunk.z() <= maxChunkZ;
     }
+
+    /** The chunk the spiral must be centered on, derived from the block-space center. */
+    public int centerChunkX() {
+        return Math.floorDiv(centerBlockX, 16);
+    }
+
+    /** The chunk the spiral must be centered on, derived from the block-space center. */
+    public int centerChunkZ() {
+        return Math.floorDiv(centerBlockZ, 16);
+    }
 }

@@ -28,4 +28,11 @@ public interface WorldCommandContext {
 
     /** Builds the live snapshot {@link ManagedWorldService#verify} checks a manifest against. */
     Function<ManagedWorldManifest, LiveWorldSnapshot> liveSnapshotFactory();
+
+    /**
+     * Notified with the up-to-date readiness immediately after a {@code verify} call, so a readiness
+     * gate cached elsewhere (e.g. {@code TerraForgePlugin#managedWorldReady()}) can be updated right
+     * away instead of only on the next restart. No-op by default.
+     */
+    default void onVerifyResult(boolean ready) {}
 }

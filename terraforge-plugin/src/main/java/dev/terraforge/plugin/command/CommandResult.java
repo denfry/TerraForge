@@ -5,6 +5,7 @@ import java.util.List;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.command.CommandSender;
+import org.bukkit.command.ConsoleCommandSender;
 
 /**
  * Structured outcome of one command dispatch: a sequence of lines, each carrying its own severity.
@@ -38,6 +39,22 @@ public record CommandResult(List<Line> lines) {
 
     public static CommandResult denied() {
         return error("You do not have permission for this command.");
+    }
+
+    /**
+     * Reports a caught exception without leaking server-filesystem detail to non-console senders.
+     *
+     * <p>Console operators already have full filesystem access and read TerraForge's own logs, so
+     * seeing an exception's message there is not a disclosure; every other sender (players, command
+     * blocks, plugins invoking the command programmatically) gets a generic pointer to the console log
+     * instead, so a stack trace or a server-root path is never echoed into chat. Shared by every
+     * command handler that might surface a filesystem/IO exception.
+     */
+    public static CommandResult sanitizedError(CommandSender sender, Exception exception, String action) {
+        if (sender instanceof ConsoleCommandSender) {
+            return error(action + " failed: " + exception.getMessage());
+        }
+        return error(action + " failed; see the console log for details.");
     }
 
     public static CommandResult multiline(List<Line> lines) {
