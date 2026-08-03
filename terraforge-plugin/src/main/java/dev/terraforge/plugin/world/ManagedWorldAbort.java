@@ -26,8 +26,16 @@ public final class ManagedWorldAbort {
         }
         ManagedWorldManifest manifest = loaded.get();
         Path realServerRoot = serverRoot.toRealPath();
-        Path earth = worldContainer.resolve("earth").normalize();
-        if (!Files.isDirectory(earth)) throw new IOException("no staged earth directory to abort");
+        Path earthNormalized = worldContainer.resolve("earth").normalize();
+        if (!Files.isDirectory(earthNormalized)) throw new IOException("no staged earth directory to abort");
+        // Canonicalize earth (resolving any symlinks in it or an ancestor) before it is used for either the
+        // ownership walk or the delete, and require it still resolve under the real server root. Without this,
+        // a symlinked world/earth (or a symlinked ancestor, e.g. under Docker/Pterodactyl) would let ownership
+        // verification and deletion silently operate on whatever the link points to.
+        Path earth = earthNormalized.toRealPath();
+        if (!earth.startsWith(realServerRoot)) {
+            throw new IOException("refusing to abort: staged earth directory resolves outside the server root");
+        }
 
         Set<Path> allowedRelativeFiles = new HashSet<>();
         for (String owned : manifest.ownedStagingFiles()) {

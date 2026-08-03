@@ -115,6 +115,29 @@ class ManagedWorldAbortTest {
                 .isInstanceOf(IOException.class);
     }
 
+    @Test void refusesWhenEarthDirectoryIsASymlinkEscapingTheServerRoot(@TempDir Path outside) throws Exception {
+        var manifests = new ManagedWorldManifestStore(pluginRoot());
+        Path realTarget = outside.resolve("outside-earth");
+        Files.createDirectories(realTarget);
+        Files.writeString(realTarget.resolve(ManagedWorldAbort.MARKER_FILE_NAME), "staged\n");
+        Files.createDirectories(serverRoot.resolve("world"));
+        Path earth = earthDir();
+        try {
+            Files.createSymbolicLink(earth, realTarget);
+        } catch (java.nio.file.FileSystemException e) {
+            // Creating symlinks requires elevated privileges on some platforms (e.g. Windows without
+            // developer mode); skip rather than fail the whole suite in that environment.
+            org.junit.jupiter.api.Assumptions.assumeTrue(false, "symlink creation not permitted: " + e);
+            return;
+        }
+        manifests.save(manifest(List.of()));
+
+        assertThatThrownBy(() -> new ManagedWorldAbort(manifests).abort(serverRoot, serverRoot.resolve("world")))
+                .isInstanceOf(IOException.class);
+        assertThat(Files.exists(realTarget)).isTrue();
+        assertThat(Files.exists(realTarget.resolve(ManagedWorldAbort.MARKER_FILE_NAME))).isTrue();
+    }
+
     private Path pluginRoot() { return serverRoot.resolve("plugins/TerraForge"); }
     private Path earthDir() { return serverRoot.resolve("world/earth"); }
 
