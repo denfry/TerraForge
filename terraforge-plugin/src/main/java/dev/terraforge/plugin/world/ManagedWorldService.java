@@ -41,9 +41,14 @@ public final class ManagedWorldService {
      * Checks every prerequisite and, when they all pass, packages what {@link #stage} needs to build the
      * staged edits: the vertical profile driving world height and the height datapack, the config and DEM
      * data fingerprints recorded into the manifest, and the paper-world.yml chunk settings to apply.
+     * <p>
+     * The config and data fingerprints are always computed here, via {@link VerticalProfile#fingerprint()}
+     * and {@link DemDataFingerprint#of(Path)}, rather than accepted as caller-supplied strings: this is the
+     * single write-time call site, so it can never drift from the algorithm {@code TerraForgePlugin} uses
+     * to recompute both fingerprints live for verification.
      */
     public WorldCreationPlan plan(ManagedWorldEnvironment environment, String configuredName, long minimumFreeDiskGb,
-                                   VerticalProfile verticalProfile, String configFingerprint, String dataFingerprint,
+                                   VerticalProfile verticalProfile, Path demDirectory,
                                    PaperWorldSettingsEditor.ChunkSettings chunkSettings) {
         List<WorldCreationCheck> checks = new ArrayList<>();
         checks.add(new WorldCreationCheck("paper", environment.isOfficialSupportedPaper(), "official supported Paper is required"));
@@ -54,6 +59,8 @@ public final class ManagedWorldService {
         checks.add(new WorldCreationCheck("prepared-dem", environment.hasPreparedDem(), "prepared DEM tiles are required"));
         try { checks.add(new WorldCreationCheck("disk-space", environment.usableDiskBytes(environment.worldContainer()) >= minimumFreeDiskGb * GIB, "insufficient usable disk space")); }
         catch (IOException exception) { checks.add(new WorldCreationCheck("disk-space", false, "cannot inspect usable disk space")); }
+        String configFingerprint = verticalProfile.fingerprint();
+        String dataFingerprint = DemDataFingerprint.of(demDirectory);
         return new WorldCreationPlan(checks, environment.serverRoot(), environment.worldContainer(), "earth",
                 verticalProfile, configFingerprint, dataFingerprint, chunkSettings);
     }

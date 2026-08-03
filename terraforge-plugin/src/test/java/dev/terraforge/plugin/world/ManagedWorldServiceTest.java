@@ -14,7 +14,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class ManagedWorldServiceTest {
-    private static final String HASH = "a".repeat(64);
     private static final String OTHER_HASH = "b".repeat(64);
     private static final PaperWorldSettingsEditor.ChunkSettings CHUNK_SETTINGS =
             new PaperWorldSettingsEditor.ChunkSettings(6000, 24, "10s");
@@ -23,13 +22,25 @@ class ManagedWorldServiceTest {
 
     @Test void planPerformsZeroFilesystemWrites() throws Exception {
         Files.createDirectories(serverRoot.resolve("worlds"));
+        Path dem = demDirectory();
         List<String> before = listEntries();
 
         WorldCreationPlan plan = new ManagedWorldService().plan(executableEnvironment("worlds"), "earth", 10,
-                VerticalProfile.regional(), HASH, HASH, CHUNK_SETTINGS);
+                VerticalProfile.regional(), dem, CHUNK_SETTINGS);
 
         assertThat(plan.executable()).isTrue();
         assertThat(listEntries()).isEqualTo(before);
+    }
+
+    @Test void planComputesFingerprintsFromTheVerticalProfileAndDemDirectoryRatherThanAcceptingThemAsInput() throws Exception {
+        Files.createDirectories(serverRoot.resolve("worlds"));
+        Path dem = demDirectory();
+
+        WorldCreationPlan plan = new ManagedWorldService().plan(executableEnvironment("worlds"), "earth", 10,
+                VerticalProfile.regional(), dem, CHUNK_SETTINGS);
+
+        assertThat(plan.configFingerprint()).isEqualTo(VerticalProfile.regional().fingerprint());
+        assertThat(plan.dataFingerprint()).isEqualTo(DemDataFingerprint.of(dem));
     }
 
     @Test void stageAssemblesEditsFromTheProfileRendererAndEditors() throws Exception {
@@ -52,8 +63,8 @@ class ManagedWorldServiceTest {
         assertThat(manifest.datapackFingerprint()).isEqualTo(pack.fingerprint());
         assertThat(manifest.minY()).isEqualTo(VerticalProfile.regional().minY());
         assertThat(manifest.maxY()).isEqualTo(VerticalProfile.regional().maxY());
-        assertThat(manifest.configFingerprint()).isEqualTo(HASH);
-        assertThat(manifest.dataFingerprint()).isEqualTo(HASH);
+        assertThat(manifest.configFingerprint()).isEqualTo(VerticalProfile.regional().fingerprint());
+        assertThat(manifest.dataFingerprint()).isEqualTo(DemDataFingerprint.of(demDirectory()));
     }
 
     @Test void stageIsIdempotentForAnIdenticalPendingManifest() throws Exception {
@@ -101,14 +112,25 @@ class ManagedWorldServiceTest {
     @Test void stageRefusesANonExecutablePlan() throws Exception {
         ManagedWorldService service = new ManagedWorldService(pluginRoot());
         WorldCreationPlan plan = new ManagedWorldService().plan(executableEnvironment("world"), "spawn", 10,
-                VerticalProfile.regional(), HASH, HASH, CHUNK_SETTINGS);
+                VerticalProfile.regional(), demDirectory(), CHUNK_SETTINGS);
 
         assertThatThrownBy(() -> service.stage(plan)).isInstanceOf(IOException.class);
     }
 
     private WorldCreationPlan executablePlan() {
         return new ManagedWorldService().plan(executableEnvironment("world"), "earth", 10, VerticalProfile.regional(),
-                HASH, HASH, CHUNK_SETTINGS);
+                demDirectory(), CHUNK_SETTINGS);
+    }
+
+    private Path demDirectory() {
+        Path dem = serverRoot.resolve("dem-fixture");
+        try {
+            Files.createDirectories(dem);
+            Files.writeString(dem.resolve("tile-0.dem"), "elevation-fixture-data");
+        } catch (IOException exception) {
+            throw new java.io.UncheckedIOException(exception);
+        }
+        return dem;
     }
 
     private ManagedWorldEnvironment executableEnvironment(String worldContainerName) {
