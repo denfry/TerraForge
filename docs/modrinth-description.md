@@ -87,17 +87,15 @@ java -jar terraforge-cli-<version>.jar setup \
 
 Add `--dry-run` first to see how large the download is.
 
-4. Register the generator in `bukkit.yml`:
-
-```yaml
-worlds:
-  earth:
-    generator: TerraForge
-```
-
-5. Start the server and verify:
+4. Create the managed Earth world safely — `/earth world plan` to check every prerequisite,
+   `/earth world create` to stage it (requires a restart to take effect), then restart and run
+   `/earth world verify`:
 
 ```
+/earth world plan
+/earth world create
+# restart the server
+/earth world verify
 /earth info
 /earth whereami
 ```
@@ -116,12 +114,12 @@ Root command `/earth` — aliases `/tf`, `/terraforge`.
 | `/earth info` | Show world, scale and projection information | Everyone |
 | `/earth whereami` | Show the current real-world location | Everyone |
 | `/earth coords <lat> <lon>` | Convert geographic coordinates | Everyone |
-| `/earth distance <lat> <lon>` | Measure geodesic distance | Everyone |
 | `/earth country <name>` | Inspect a country | Everyone |
 | `/earth city <name>` | Inspect a city | Everyone |
+| `/earth world plan\|create\|status\|verify\|abort` | Manage the managed Earth world lifecycle | Operators |
 | `/earth teleport city <name>` | Teleport to a prepared city | Operators |
 | `/earth teleport country <name>` | Teleport to a prepared country | Operators |
-| `/earth pregenerate <radius>` | Generate a bounded chunk region | Operators |
+| `/earth pregenerate start\|full\|pause\|resume\|status\|cancel` | Manage bounded chunk pregeneration | Operators |
 | `/earth cache [clear]` | Inspect or invalidate caches | Operators |
 | `/earth towny refresh` | Backfill Towny geography | Operators |
 | `/earth debug [overlay]` | Inspect terrain sampling | Operators |
