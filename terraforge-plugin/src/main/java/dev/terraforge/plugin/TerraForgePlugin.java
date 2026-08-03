@@ -9,6 +9,7 @@ import dev.terraforge.core.api.InMemoryGeoMarkerService;
 import dev.terraforge.core.cache.CacheManager;
 import dev.terraforge.core.config.ConfigLoader;
 import dev.terraforge.core.config.TerraForgeConfig;
+import dev.terraforge.core.config.VerticalProfile;
 import dev.terraforge.core.coord.CoordinateTransformer;
 import dev.terraforge.core.projection.Projection;
 import dev.terraforge.core.projection.ProjectionRegistry;
@@ -26,6 +27,7 @@ import dev.terraforge.geo.water.SqliteWaterProvider;
 import dev.terraforge.generator.TerraForgeChunkGenerator;
 import dev.terraforge.generator.TerrainStack;
 import dev.terraforge.plugin.world.BootstrapDatapackService;
+import dev.terraforge.plugin.world.DemDataFingerprint;
 import dev.terraforge.plugin.world.LiveWorldSnapshot;
 import dev.terraforge.plugin.world.LiveWorldVerifier;
 import dev.terraforge.plugin.world.ManagedWorldManifest;
@@ -261,9 +263,11 @@ public final class TerraForgePlugin extends JavaPlugin {
     /**
      * Reads what {@link ManagedWorldStartupVerifier} needs from the live server for one manifest.
      *
-     * <p>Config and data fingerprints have no live recomputation yet -- that lands with the staging
-     * command that first produces them -- so they pass the manifest's own recorded value through, which
-     * still exercises every other check (name, primary-world identity, generator, height, datapack).
+     * <p>Config and data fingerprints are recomputed from the live server's own configuration and DEM
+     * directory -- via {@link VerticalProfile#fingerprint()} and {@link DemDataFingerprint#of} -- using
+     * exactly the same algorithms staging is expected to use when it records a manifest. Echoing the
+     * manifest's own value back here would make {@link dev.terraforge.plugin.world.LiveWorldVerifier}'s
+     * comparison a tautology that can never catch config or data drift.
      */
     private LiveWorldSnapshot captureLiveWorldSnapshot(ManagedWorldManifest manifest) {
         org.bukkit.World world = getServer().getWorld(manifest.worldName());
@@ -274,8 +278,10 @@ public final class TerraForgePlugin extends JavaPlugin {
         boolean terraForgeGenerator = world.getGenerator() instanceof TerraForgeChunkGenerator;
         var datapack = getServer().getDatapackManager().getPack(MANAGED_DATAPACK_NAME);
         boolean datapackEnabled = datapack != null && datapack.isEnabled();
+        String configFingerprint = VerticalProfile.from(config.terrain()).fingerprint();
+        String dataFingerprint = DemDataFingerprint.of(demReader.directory());
         return new LiveWorldSnapshot(world.getName(), primary, terraForgeGenerator, world.getMinHeight(),
-                world.getMaxHeight(), datapackEnabled, manifest.configFingerprint(), manifest.dataFingerprint(),
+                world.getMaxHeight(), datapackEnabled, configFingerprint, dataFingerprint,
                 manifest.datapackFingerprint());
     }
 

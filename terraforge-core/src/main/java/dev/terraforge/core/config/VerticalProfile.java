@@ -1,6 +1,10 @@
 package dev.terraforge.core.config;
 
 import dev.terraforge.core.coord.GeoBounds;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.Locale;
 
 /** The vertical settings a world needs, and the height they imply. */
 public record VerticalProfile(int seaLevel, int minY, int maxY, double metersPerBlock) {
@@ -36,6 +40,23 @@ public record VerticalProfile(int seaLevel, int minY, int maxY, double metersPer
     public TerraForgeConfig.TerrainSection applyTo(TerraForgeConfig.TerrainSection defaults) {
         return new TerraForgeConfig.TerrainSection(seaLevel, minY, maxY, defaults.verticalExaggeration(), metersPerBlock, defaults.fallbackElevation(), defaults.bedrockThickness());
     }
+    /**
+     * SHA-256 over the exact values that determine a managed world's height, used as the config
+     * fingerprint recorded into and verified against {@code ManagedWorldManifest}. Identical values
+     * always yield the same fingerprint regardless of process or platform.
+     */
+    public String fingerprint() {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            String canonical = String.format(Locale.ROOT, "seaLevel=%d;minY=%d;maxY=%d;metersPerBlock=%s",
+                    seaLevel, minY, maxY, Double.toString(metersPerBlock));
+            digest.update(canonical.getBytes(StandardCharsets.UTF_8));
+            return java.util.HexFormat.of().formatHex(digest.digest());
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 is unavailable", exception);
+        }
+    }
+
     public int everestBlocks() { return (int) Math.round(EVEREST_METRES / metersPerBlock); }
     public int marianaBlocks() { return (int) Math.round(MARIANA_METRES / metersPerBlock); }
     public String describe() {
