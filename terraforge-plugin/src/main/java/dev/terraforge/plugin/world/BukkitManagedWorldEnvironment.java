@@ -25,7 +25,7 @@ public final class BukkitManagedWorldEnvironment implements ManagedWorldEnvironm
     /** {@code server.properties} and {@code bukkit.yml} always live in the server's working directory. */
     @Override public Path serverRoot() { return Path.of("").toAbsolutePath(); }
 
-    @Override public Path worldContainer() { return server.getWorldContainer().toPath(); }
+    @Override public Path worldContainer() { return server.getWorldContainer().toPath().toAbsolutePath().normalize(); }
 
     @Override public long usableDiskBytes(Path path) throws IOException { return Files.getFileStore(path).getUsableSpace(); }
 }

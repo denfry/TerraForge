@@ -104,7 +104,14 @@ class PrepareRegionCommandTest {
         SqliteBoundaryIndex index = SqliteBoundaryIndex.load(database);
         assertThat(index.countryAt(11, 21)).map(country -> country.isoCode()).contains("TT");
         assertThat(index.findCityByName("Inside")).isPresent();
-        assertThat(SqliteWaterProvider.load(database).waterTypeAt(11, 21)).isEqualTo(WaterType.LAKE);
+        var water = SqliteWaterProvider.load(database);
+        try {
+            assertThat(water.waterTypeAt(11, 21)).isEqualTo(WaterType.LAKE);
+        } finally {
+            if (water instanceof AutoCloseable closeable) {
+                closeable.close();
+            }
+        }
         assertThat(LandcoverGridFile.read(output.resolve("data/landcover/region.tflc"))
                 .landcoverAt(11.5, 20.5)).isEqualTo(LandcoverClass.TREE_COVER);
     }

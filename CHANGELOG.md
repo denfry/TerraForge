@@ -44,8 +44,17 @@ format. Both are stated explicitly per release, because either one means regener
 - `prepare-region --skip` runs a subset of the stages (`dem`, `bathymetry`, `landcover`,
   `database`), and `--replace-database` rebuilds the vector tables without rewriting prepared
   tiles. Adding a dataset to a prepared region no longer means re-transcoding every DEM tile.
+- Natural water geometry now decodes lazily from the prepared database instead of loading every
+  feature at startup; a whole-Earth import no longer stalls the server thread while water bodies
+  are parsed. Resident decoded features are bounded by the new `cache.water-feature-cache-entries`
+  setting (default 4096).
 
 ### Fixed
+
+- The plugin now enables at `STARTUP` load order, so Bukkit asks TerraForge for the `earth` world's
+  generator instead of silently falling back to vanilla terrain.
+- The managed-world check compares absolute, normalized paths, so a `world-container` relative to
+  the server root is resolved consistently with the live world directory.
 
 - The bathymetry stage counted progress in source files rather than degree cells. Eight GEBCO
   rasters cover the planet, so the progress line sat at `0/8` for the first hour and reported no

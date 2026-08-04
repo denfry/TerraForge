@@ -1,8 +1,10 @@
 -- ===========================================================================
 --  TerraForge geographic database (SQLite)
 --  Written offline by `terraforge prepare-geo`, read-only at runtime.
---  Geometry is stored as WKB and loaded into an in-memory R-tree on startup;
---  the server never runs a query per block.
+--  Geometry is stored as WKB. Bounding-box columns (min_lat/min_lon/max_lat/max_lon)
+--  are catalogued into an in-memory R-tree at startup and the geometry itself is decoded
+--  from its row only on first lookup, then cached (see LazySqliteWaterProvider) --
+--  a whole-Earth import is too many features to decode eagerly without blocking startup.
 -- ===========================================================================
 
 PRAGMA journal_mode = WAL;

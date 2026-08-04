@@ -104,6 +104,9 @@ cache:
   # Prepared land-cover grids kept resident. Grids are read on demand, so a planet-wide
   # import costs no more memory than a regional one -- only more files on disk.
   landcover-grid-cache-entries: 256
+  # Decoded natural-water geometries kept resident. Geometry is decoded from the prepared
+  # database on demand, so a planet-wide import costs no more memory than a regional one.
+  water-feature-cache-entries: 4096
   chunk-cache-entries: 4096
   statistics-interval-seconds: 300
 

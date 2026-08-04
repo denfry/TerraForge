@@ -7,6 +7,11 @@ author: TerraForge
 website: https://github.com/denfry/TerraForge
 folia-supported: false
 
+# The default world's generator is resolved during server startup, before plugins normally
+# enable -- without STARTUP load order, Bukkit calls getDefaultWorldGenerator() too early and
+# 'earth' silently falls back to vanilla terrain.
+load: STARTUP
+
 softdepend:
   - Towny
   - NewTowny

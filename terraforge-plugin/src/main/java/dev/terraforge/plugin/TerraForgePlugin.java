@@ -22,7 +22,6 @@ import dev.terraforge.geo.dem.FileDemReader;
 import dev.terraforge.geo.landcover.FileLandcoverProvider;
 import dev.terraforge.geo.karst.SqliteKarstProvider;
 import dev.terraforge.geo.marker.GeoMarkerPopulator;
-import dev.terraforge.geo.water.IndexedWaterProvider;
 import dev.terraforge.geo.water.SqliteWaterProvider;
 import dev.terraforge.generator.TerraForgeChunkGenerator;
 import dev.terraforge.generator.TerrainStack;
@@ -74,6 +73,9 @@ import java.util.concurrent.Executor;
 import java.util.function.Function;
 import org.bstats.bukkit.Metrics;
 import org.bstats.charts.SimplePie;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.server.ServerLoadEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 
 /**
@@ -84,7 +86,7 @@ import org.bukkit.plugin.java.JavaPlugin;
  * terrain work happens in the core, geo and generator modules -- this class must stay free of GIS
  * logic.
  */
-public final class TerraForgePlugin extends JavaPlugin {
+public final class TerraForgePlugin extends JavaPlugin implements Listener {
 
     private static final String LOG_PREFIX = "[TerraForge] ";
     // Registered at https://bstats.org/plugin/bukkit/TerraForge -- replace before release.
@@ -97,6 +99,7 @@ public final class TerraForgePlugin extends JavaPlugin {
     private FileDemReader demReader;
     private DemElevationProvider elevation;
     private FileLandcoverProvider landcover;
+    private dev.terraforge.core.data.WaterProvider water;
     private TerrainStack terrain;
     private SqliteBoundaryIndex boundaries;
     private SqliteTownGeoService townGeography;
@@ -130,6 +133,13 @@ public final class TerraForgePlugin extends JavaPlugin {
     private static final PaperWorldSettingsEditor.ChunkSettings MANAGED_WORLD_CHUNK_SETTINGS =
             new PaperWorldSettingsEditor.ChunkSettings(6000, 24, "10s");
 
+    /**
+     * Runs under {@code load: STARTUP} (see {@code plugin.yml}), so this fires before Bukkit
+     * resolves the default world's generator -- required for {@link #getDefaultWorldGenerator} to
+     * ever be asked instead of Bukkit silently falling back to vanilla terrain. Everything that
+     * depends on other plugins or worlds being ready is deferred to {@link #onServerLoad}, since a
+     * STARTUP plugin enables before normal (POSTWORLD) plugins such as Towny or BlueMap do.
+     */
     @Override
     public void onEnable() {
         try {
@@ -141,7 +151,22 @@ public final class TerraForgePlugin extends JavaPlugin {
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
+        getServer().getPluginManager().registerEvents(this, this);
+        // Lifecycle event registration (Paper's command API) closes once world loading starts, so this
+        // cannot wait for ServerLoadEvent -- unlike the rest of onServerLoad, it depends on nothing
+        // beyond this plugin instance.
+        registerCommand("earth", "TerraForge geographic and Earth-world commands", List.of("tf", "terraforge"),
+                new PaperEarthCommand(new EarthCommandRouter(new EarthCommand(this),
+                        new WorldCommandHandler(new PluginWorldCommandContext()),
+                        new PregenerationCommandHandler(new PluginPregenerationCommandContext()),
+                        new DataCommandHandler(new PluginDataCommandContext()),
+                        new DoctorCommandHandler(new PluginDoctorCommandContext()),
+                        new PerformanceCommandHandler(new PluginPerformanceCommandContext()))));
+    }
 
+    /** Fires once, after every plugin has enabled and every world named in server.properties has loaded. */
+    @EventHandler
+    public void onServerLoad(ServerLoadEvent event) {
         this.integrations = IntegrationStatus.detect(getServer().getPluginManager(), config);
         initializeBoundaryServices();
         initializeMarkers();
@@ -150,13 +175,6 @@ public final class TerraForgePlugin extends JavaPlugin {
         initializeMetrics();
         verifyManagedWorldOnStartup();
         initializePregeneration();
-        registerCommand("earth", "TerraForge geographic and Earth-world commands", List.of("tf", "terraforge"),
-                new PaperEarthCommand(new EarthCommandRouter(new EarthCommand(this),
-                        new WorldCommandHandler(new PluginWorldCommandContext()),
-                        new PregenerationCommandHandler(new PluginPregenerationCommandContext()),
-                        new DataCommandHandler(new PluginDataCommandContext()),
-                        new DoctorCommandHandler(new PluginDoctorCommandContext()),
-                        new PerformanceCommandHandler(new PluginPerformanceCommandContext()))));
         printBanner();
     }
 
@@ -239,6 +257,14 @@ public final class TerraForgePlugin extends JavaPlugin {
         if (landcover != null) {
             landcover.close();
             landcover = null;
+        }
+        if (water instanceof AutoCloseable closeable) {
+            try {
+                closeable.close();
+            } catch (Exception exception) {
+                getLogger().warning(LOG_PREFIX + "Water: cannot close prepared database: " + exception.getMessage());
+            }
+            water = null;
         }
         getLogger().info(LOG_PREFIX + "Disabled.");
     }
@@ -559,9 +585,12 @@ public final class TerraForgePlugin extends JavaPlugin {
             return new dev.terraforge.core.data.SeaLevelWaterProvider(elevation);
         }
         try {
-            IndexedWaterProvider provider = SqliteWaterProvider.load(database);
+            dev.terraforge.core.data.WaterProvider provider = SqliteWaterProvider.load(
+                    database, cacheManager, config.cache().waterFeatureCacheEntries());
             if (provider != null) {
-                getLogger().info(LOG_PREFIX + "Water: loaded prepared natural water features.");
+                this.water = provider;
+                getLogger().info(LOG_PREFIX + "Water: prepared natural water features catalogued; "
+                        + "geometry decodes on demand.");
                 return provider;
             }
             getLogger().info(LOG_PREFIX + "Water: prepared database has no water features; using elevation fallback.");

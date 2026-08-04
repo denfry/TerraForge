@@ -51,7 +51,8 @@ public record TerraForgeConfig(
                 PregenerationSection.defaults(),
                 InfrastructureSection.allDisabled(),
                 new DataSection("data", "cache", "terraforge.db"),
-                new CacheSection(1024, 256, DEFAULT_LANDCOVER_GRID_CACHE_ENTRIES, 4096, 300),
+                new CacheSection(1024, 256, DEFAULT_LANDCOVER_GRID_CACHE_ENTRIES,
+                        DEFAULT_WATER_FEATURE_CACHE_ENTRIES, 4096, 300),
                 new TownySection(true),
                 new BlueMapSection(true, true, true),
                 new DebugSection(false, false),
@@ -169,6 +170,7 @@ public record TerraForgeConfig(
      * @param memoryLimitMb        soft ceiling for all in-memory caches
      * @param demTileCacheEntries  DEM tiles kept resident
      * @param landcoverGridCacheEntries prepared land-cover grids kept resident
+     * @param waterFeatureCacheEntries decoded natural-water geometries kept resident
      * @param chunkCacheEntries    prepared chunk samples kept resident
      * @param statisticsIntervalSeconds how often cache statistics are logged in debug mode
      */
@@ -177,22 +179,30 @@ public record TerraForgeConfig(
             int memoryLimitMb,
             int demTileCacheEntries,
             int landcoverGridCacheEntries,
+            int waterFeatureCacheEntries,
             int chunkCacheEntries,
             int statisticsIntervalSeconds) {
 
         /**
-         * A config written before this key existed loads with land cover unbounded, which is exactly
-         * the behaviour that made a planet-wide world impossible. Absent means default, not zero.
+         * A config written before one of these keys existed loads with that cache unbounded, which is
+         * exactly the behaviour that made a planet-wide world impossible. Absent means default, not
+         * zero.
          */
         public CacheSection {
             if (landcoverGridCacheEntries <= 0) {
                 landcoverGridCacheEntries = DEFAULT_LANDCOVER_GRID_CACHE_ENTRIES;
+            }
+            if (waterFeatureCacheEntries <= 0) {
+                waterFeatureCacheEntries = DEFAULT_WATER_FEATURE_CACHE_ENTRIES;
             }
         }
     }
 
     /** Enough for a 5x5 degree working area at the default grid size, about 92 MiB. */
     public static final int DEFAULT_LANDCOVER_GRID_CACHE_ENTRIES = 256;
+
+    /** Enough decoded water geometries to cover a working area without re-decoding on every visit. */
+    public static final int DEFAULT_WATER_FEATURE_CACHE_ENTRIES = 4096;
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record TownySection(boolean enabled) {

@@ -31,7 +31,14 @@ class PrepareGeoCommandTest {
         command.database = database;
 
         assertThat(command.call()).isZero();
-        assertThat(SqliteWaterProvider.load(database).waterTypeAt(11, 21)).isEqualTo(WaterType.LAKE);
+        var provider = SqliteWaterProvider.load(database);
+        try {
+            assertThat(provider.waterTypeAt(11, 21)).isEqualTo(WaterType.LAKE);
+        } finally {
+            if (provider instanceof AutoCloseable closeable) {
+                closeable.close();
+            }
+        }
     }
 
     @Test
