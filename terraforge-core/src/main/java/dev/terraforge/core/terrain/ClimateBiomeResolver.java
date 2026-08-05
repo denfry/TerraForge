@@ -98,12 +98,18 @@ public final class ClimateBiomeResolver {
             case GRASSLAND, CROPLAND -> grasslandFor(absLatitude, mountainous);
             case MOSS_LICHEN -> ClimateBiome.TUNDRA;
             case BARE_SPARSE -> absLatitude < 35.0 ? ClimateBiome.DESERT : ClimateBiome.BARE_ROCK;
-            case PERMANENT_WATER -> ClimateBiome.LAKE;
             // Handled above, before the treeline rules; listed so the switch stays exhaustive.
             case SNOW_ICE -> ClimateBiome.GLACIER;
             // Built-up land is read from the data and mapped to what surrounds it. TerraForge never
             // generates the settlement the source dataset saw -- players build those.
-            case BUILT_UP, UNKNOWN -> mountainous ? ClimateBiome.MOUNTAIN_FOREST : forestFor(absLatitude);
+            //
+            // PERMANENT_WATER falls back the same way rather than claiming a lake: this landcover
+            // class alone is not vetted water evidence (the vector WaterProvider already returned
+            // NONE for this column, or resolveWater() would have run instead), and ESA WorldCover is
+            // known to misclassify bright arid ground -- salt pans, playas -- as permanent water. An
+            // unconfirmed pixel should not paint dry land with a lake biome and palette.
+            case BUILT_UP, UNKNOWN, PERMANENT_WATER ->
+                    mountainous ? ClimateBiome.MOUNTAIN_FOREST : forestFor(absLatitude);
         };
     }
 

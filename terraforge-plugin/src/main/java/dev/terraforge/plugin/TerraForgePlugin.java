@@ -586,7 +586,8 @@ public final class TerraForgePlugin extends JavaPlugin implements Listener {
         }
         try {
             dev.terraforge.core.data.WaterProvider provider = SqliteWaterProvider.load(
-                    database, cacheManager, config.cache().waterFeatureCacheEntries());
+                    database, cacheManager, config.cache().waterFeatureCacheEntries(),
+                    config.water().minVisibleRiverDischargeCms());
             if (provider != null) {
                 this.water = provider;
                 getLogger().info(LOG_PREFIX + "Water: prepared natural water features catalogued; "

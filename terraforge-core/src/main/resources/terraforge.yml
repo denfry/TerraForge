@@ -10,7 +10,7 @@ world:
 scale:
   # Horizontal scale. 1.0 => one block covers one kilometre of ground.
   # Supported presets: 0.5 (1 block = 2 km), 1.0, 2.0 (1 block = 500 m), 5.0 (1 block = 200 m).
-  blocks-per-km: 1.0
+  blocks-per-km: 2.0
 
 earth:
   # Geographic point that maps to Minecraft x=0, z=0.
@@ -49,6 +49,11 @@ water:
   rivers: true
   # Ocean depth in metres where the DEM provides no bathymetry.
   default-ocean-depth: 30.0
+  # HydroRIVERS discharge (m^3/s) below which a prepared river is not carved. Preparation keeps every
+  # mapped river, including the smallest headwaters -- this only decides what the current world
+  # renders, so raising it needs no re-preparation. 0 renders all of them, which at coarse
+  # blocks-per-km settings can look like a dense, hairy network rather than distinct rivers.
+  min-visible-river-discharge-cms: 40.0
 
 biomes:
   enabled: true
@@ -58,7 +63,7 @@ biomes:
 vegetation:
   enabled: true
   # Multiplier on natural vegetation density (trees, grass, flowers).
-  density: 1.0
+  density: 0.5
 
 generation:
   # Natural terrain only: no player infrastructure is generated.

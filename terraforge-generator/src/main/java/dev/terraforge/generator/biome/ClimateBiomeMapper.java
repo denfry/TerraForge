@@ -47,7 +47,10 @@ public final class ClimateBiomeMapper implements BiomeMapper {
 
             case TUNDRA -> Biome.SNOWY_PLAINS;
             case ALPINE -> Biome.SNOWY_SLOPES;
-            case GLACIER -> elevation > PEAK_GLACIER ? Biome.FROZEN_PEAKS : Biome.ICE_SPIKES;
+            // Ice Spikes is deliberately avoided: vanilla decorates it with its own noise-driven
+            // "ice_spike" feature, an erratic forest of packed-ice columns that has no relationship
+            // to real glacier surfaces and reads as visual noise instead of terrain.
+            case GLACIER -> elevation > PEAK_GLACIER ? Biome.FROZEN_PEAKS : Biome.SNOWY_SLOPES;
 
             case MOUNTAIN_FOREST -> Biome.GROVE;
             case MOUNTAIN_MEADOW -> Biome.MEADOW;

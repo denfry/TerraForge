@@ -159,6 +159,7 @@ final class LazySqliteWaterProvider implements WaterProvider, AutoCloseable {
     }
 
     /** One catalogued feature: bounding box and type, read cheaply; geometry decoded on demand. */
-    record CatalogEntry(long id, WaterType type, Envelope envelope, double riverBedDepthMetres) {
+    record CatalogEntry(long id, WaterType type, Envelope envelope, double riverBedDepthMetres,
+                         double dischargeCubicMetresPerSecond) {
     }
 }

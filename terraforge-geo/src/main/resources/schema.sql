@@ -81,6 +81,9 @@ CREATE TABLE IF NOT EXISTS water_bodies (
     max_lat     REAL    NOT NULL,
     max_lon     REAL    NOT NULL,
     river_bed_depth_m REAL NOT NULL DEFAULT 0,
+    -- HydroRIVERS DIS_AV_CMS (m^3/s), 0 when the source line carried no discharge estimate. Read-only
+    -- rows never lose data at this stage -- the runtime decides visibility from this column instead.
+    discharge_cms REAL NOT NULL DEFAULT 0,
     geometry    BLOB    NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_water_bbox ON water_bodies (min_lat, max_lat, min_lon, max_lon);

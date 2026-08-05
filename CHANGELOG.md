@@ -9,6 +9,25 @@ format. Both are stated explicitly per release, because either one means regener
 
 ## [Unreleased]
 
+### Fixed
+
+- Glacier terrain below 2000 m no longer maps to vanilla's `ICE_SPIKES` biome. That biome carries its
+  own noise-driven "ice_spike" decorator feature with no relationship to real glacier surfaces --
+  visible as an erratic forest of packed-ice columns wherever a coastal snowfield was mapped. It now
+  uses `SNOWY_SLOPES`, matching the biome already used above the treeline.
+- A landcover pixel alone (`PERMANENT_WATER`, e.g. ESA WorldCover) no longer assigns a lake biome to a
+  column the vetted vector water data disagrees with. ESA WorldCover is known to misclassify bright
+  arid ground -- salt pans, playas -- as permanent water, which previously painted dry land in arid
+  regions with a lake/river biome and surface palette even though no water block was ever placed
+  there.
+- Added `water.min-visible-river-discharge-cms` (default `1.0`) so a prepared world does not have to
+  render every HydroRIVERS headwater trickle as a full carved channel. HydroRIVERS' minimum-width
+  floor at coarse `blocks-per-km` settings turned the whole connected network, including the smallest
+  mapped streams, into a dense, hairy web rather than distinct rivers. The setting only changes what a
+  running world renders; `prepare-region`/`prepare-geo` still keep every prepared river (with its
+  discharge now stored in `water_bodies.discharge_cms`), so raising the threshold later needs no
+  re-preparation. `0.0` restores the previous behaviour.
+
 ## [0.1.2] - 2026-08-05
 
 ### Added

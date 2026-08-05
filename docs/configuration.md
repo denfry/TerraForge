@@ -57,10 +57,19 @@ Out-of-range heights are soft-clamped, never flattened.
 | `lakes` | `true` | generate inland standing water |
 | `rivers` | `true` | generate natural watercourses |
 | `default-ocean-depth` | `30.0` | depth in metres where the DEM has no bathymetry |
+| `min-visible-river-discharge-cms` | `1.0` | HydroRIVERS discharge (m³/s) below which a prepared river is not carved |
 
 When `data.database-file` exists and contains prepared entries in `water_bodies`, TerraForge loads
 those natural WKB geometries into memory at startup. A missing, empty or unreadable database is
 logged and safely falls back to elevation-derived oceans; it never floods unknown data as water.
+
+`min-visible-river-discharge-cms` filters what the running world renders, not what preparation keeps.
+HydroRIVERS maps the entire connected network down to the smallest headwaters, and every prepared
+line stays in `water_bodies` regardless of this setting -- raising or lowering it later is a config
+reload, never a re-`prepare-region`. At coarse `blocks-per-km` the effect matters most: a real 5 m
+trickle still floors to a one-block-wide channel (see [data-sources.md](data-sources.md#rivers)), so
+rendering every mapped headwater turns into a dense, hairy web rather than distinct rivers. `0.0`
+restores the old behaviour of carving every prepared river.
 
 Prepare source water data offline with `terraforge prepare-geo --input <directory> --database
 <file>`. Lakes and oceans use GeoJSON `Polygon` or `MultiPolygon` features. River GeoJSON may use

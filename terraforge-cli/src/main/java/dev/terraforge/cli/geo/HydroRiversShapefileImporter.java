@@ -33,8 +33,9 @@ public final class HydroRiversShapefileImporter {
         Path dbf = shape.resolveSibling(shape.getFileName().toString().replaceFirst("(?i)\\.shp$", ".dbf"));
         try (DbfRows attributes = new DbfRows(dbf); RandomAccessFile file = new RandomAccessFile(shape.toFile(), "r");
              PreparedStatement insert = connection.prepareStatement("""
-                     INSERT INTO water_bodies (name, water_type, min_lat, min_lon, max_lat, max_lon, river_bed_depth_m, geometry)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                     INSERT INTO water_bodies
+                         (name, water_type, min_lat, min_lon, max_lat, max_lon, river_bed_depth_m, discharge_cms, geometry)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                      """)) {
             if (file.length() < 100) throw new IOException(shape + " is not a Shapefile");
             file.seek(100);
@@ -48,7 +49,8 @@ public final class HydroRiversShapefileImporter {
                     if (manMade(row)) { skipped++; continue; }
                     Geometry line = polyline(record);
                     if (!Clip.keeps(Clip.of(clip), line)) { skipped++; continue; }
-                    double width = RiverWidth.metres(number(row, "DIS_AV_CMS"), blocksPerKm);
+                    double discharge = number(row, "DIS_AV_CMS");
+                    double width = RiverWidth.metres(discharge, blocksPerKm);
                     Geometry polygon = WaterGeoJsonImporter.riverPolygon(WaterGeoJsonImporter.splitAntimeridian(line), width);
                     if (clip != null && !clip.covers(polygon.getEnvelopeInternal())) polygon = polygon.intersection(FACTORY.toGeometry(clip));
                     if (polygon.isEmpty() || !polygon.isValid() || polygon.getArea() == 0) { skipped++; continue; }
@@ -56,7 +58,8 @@ public final class HydroRiversShapefileImporter {
                     insert.setString(1, blankToNull(row.get("NAME"))); insert.setString(2, WaterType.RIVER.name());
                     insert.setDouble(3, bounds.getMinY()); insert.setDouble(4, bounds.getMinX());
                     insert.setDouble(5, bounds.getMaxY()); insert.setDouble(6, bounds.getMaxX());
-                    insert.setDouble(7, RiverWidth.bedDepthMetres(width)); insert.setBytes(8, new WKBWriter().write(polygon));
+                    insert.setDouble(7, RiverWidth.bedDepthMetres(width)); insert.setDouble(8, discharge);
+                    insert.setBytes(9, new WKBWriter().write(polygon));
                     insert.executeUpdate(); imported++;
                 } catch (EOFException exception) { throw new IOException(shape + " ends inside a record", exception); }
             }

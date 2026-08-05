@@ -62,8 +62,9 @@ public final class WaterGeoJsonImporter {
         int skipped = 0;
         int recognised = 0;
         try (PreparedStatement insert = connection.prepareStatement("""
-                INSERT INTO water_bodies (name, water_type, min_lat, min_lon, max_lat, max_lon, river_bed_depth_m, geometry)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO water_bodies
+                    (name, water_type, min_lat, min_lon, max_lat, max_lon, river_bed_depth_m, discharge_cms, geometry)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """)) {
             for (JsonNode feature : features) {
                 JsonNode properties = feature.path("properties");
@@ -130,7 +131,8 @@ public final class WaterGeoJsonImporter {
                 insert.setDouble(6, bounds.getMaxX());
                 double depth = type == WaterType.RIVER ? RiverWidth.bedDepthMetres(riverWidth(properties, blocksPerKm)) : 0.0;
                 insert.setDouble(7, depth);
-                insert.setBytes(8, new WKBWriter().write(geometry));
+                insert.setDouble(8, type == WaterType.RIVER ? dischargeCubicMetresPerSecond(properties) : 0.0);
+                insert.setBytes(9, new WKBWriter().write(geometry));
                 insert.executeUpdate();
                 imported++;
             }
@@ -212,7 +214,11 @@ public final class WaterGeoJsonImporter {
     }
 
     private static double riverWidth(JsonNode properties, double blocksPerKm) {
-        return RiverWidth.metres(properties.path("DIS_AV_CMS").asDouble(properties.path("dis_av_cms").asDouble(0.0)), blocksPerKm);
+        return RiverWidth.metres(dischargeCubicMetresPerSecond(properties), blocksPerKm);
+    }
+
+    private static double dischargeCubicMetresPerSecond(JsonNode properties) {
+        return properties.path("DIS_AV_CMS").asDouble(properties.path("dis_av_cms").asDouble(0.0));
     }
 
     private static Geometry readLineGeometry(JsonNode node) throws IOException {

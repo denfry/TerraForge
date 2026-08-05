@@ -38,6 +38,18 @@ public final class SqliteWaterProvider {
      */
     public static WaterProvider load(Path database, CacheManager cacheManager, int maxResidentFeatures)
             throws IOException {
+        return load(database, cacheManager, maxResidentFeatures, 0.0);
+    }
+
+    /**
+     * @param maxResidentFeatures         {@code cache.water-feature-cache-entries}
+     * @param minVisibleRiverDischargeCms {@code water.min-visible-river-discharge-cms}: a prepared
+     *                                    river below this HydroRIVERS discharge is catalogued out --
+     *                                    not rendered by this world -- but the row is never touched,
+     *                                    so raising the threshold later needs no re-preparation
+     */
+    public static WaterProvider load(Path database, CacheManager cacheManager, int maxResidentFeatures,
+                                      double minVisibleRiverDischargeCms) throws IOException {
         if (maxResidentFeatures <= 0) {
             throw new IllegalArgumentException(
                     "cache.water-feature-cache-entries must be positive: " + maxResidentFeatures);
@@ -47,7 +59,8 @@ public final class SqliteWaterProvider {
         Connection connection = null;
         try {
             connection = DriverManager.getConnection(url);
-            List<LazySqliteWaterProvider.CatalogEntry> entries = catalogue(connection);
+            List<LazySqliteWaterProvider.CatalogEntry> entries =
+                    catalogue(connection, minVisibleRiverDischargeCms);
             if (entries.isEmpty()) {
                 connection.close();
                 return null;
@@ -67,21 +80,27 @@ public final class SqliteWaterProvider {
     }
 
     /** Reads bounding boxes only -- never the geometry column -- so cataloguing costs milliseconds. */
-    private static List<LazySqliteWaterProvider.CatalogEntry> catalogue(Connection connection) throws SQLException {
+    private static List<LazySqliteWaterProvider.CatalogEntry> catalogue(Connection connection,
+            double minVisibleRiverDischargeCms) throws SQLException {
         List<LazySqliteWaterProvider.CatalogEntry> entries = new ArrayList<>();
         try (PreparedStatement statement = connection.prepareStatement(
-                "SELECT id, water_type, min_lat, min_lon, max_lat, max_lon, river_bed_depth_m FROM water_bodies");
+                "SELECT id, water_type, min_lat, min_lon, max_lat, max_lon, river_bed_depth_m, discharge_cms "
+                        + "FROM water_bodies");
              ResultSet rows = statement.executeQuery()) {
             while (rows.next()) {
                 WaterType type = WaterType.valueOf(rows.getString("water_type"));
                 if (type == WaterType.NONE) {
                     continue;
                 }
+                double discharge = rows.getDouble("discharge_cms");
+                if (type == WaterType.RIVER && discharge < minVisibleRiverDischargeCms) {
+                    continue;
+                }
                 Envelope envelope = new Envelope(
                         rows.getDouble("min_lon"), rows.getDouble("max_lon"),
                         rows.getDouble("min_lat"), rows.getDouble("max_lat"));
                 entries.add(new LazySqliteWaterProvider.CatalogEntry(
-                        rows.getLong("id"), type, envelope, rows.getDouble("river_bed_depth_m")));
+                        rows.getLong("id"), type, envelope, rows.getDouble("river_bed_depth_m"), discharge));
             }
         }
         return entries;

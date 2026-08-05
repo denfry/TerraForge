@@ -59,6 +59,13 @@ the same `--blocks-per-km` as the world (and re-prepare after changing scale); `
 automatically. Published source data is recognised leniently, but canal and reservoir labels are
 rejected at preparation time under TerraForge's natural-only rule.
 
+Every prepared river is kept, discharge estimate and all, in `water_bodies.discharge_cms` --
+preparation never drops part of the connected network. What actually gets carved into a running
+world is a separate, later decision: `water.min-visible-river-discharge-cms` (see
+[configuration.md](configuration.md#water)) hides rivers below that discharge from generation without
+touching the database, because HydroRIVERS' smallest headwaters, all carved to at least one block
+wide, otherwise read as a dense web rather than a river network.
+
 `fetch` downloads the publisher's global Shapefile ZIP anonymously, extracts its `.shp` and `.dbf`
 members, and `prepare-region` reads those two files offline. No server process downloads or parses
 source vectors at runtime.

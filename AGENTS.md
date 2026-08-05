@@ -1,3 +1,5 @@
+
+
 <!-- >>> codebase-index managed >>> -->
 # codebase-index
 
@@ -10,7 +12,6 @@ Run `codebase-index search "<query>" --json` for general questions, or use
 impact, and HTML graph export. Search/read commands auto-build the index when
 it is missing; run `codebase-index update` when responses report stale data.
 <!-- <<< codebase-index managed <<< -->
-
 # TerraForge
 
 Real-Earth terrain generation Paper plugin. Kotlin-free plain Java 21, Gradle multi-module. Full

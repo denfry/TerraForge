@@ -44,7 +44,7 @@ public record TerraForgeConfig(
                 new ScaleSection(1.0),
                 new EarthSection(new OriginSection(51.0, 10.0), "equirectangular"),
                 new TerrainSection(63, -64, 320, 1.0, 1.0, 0.0, 8),
-                new WaterSection(true, true, true, 30.0),
+                new WaterSection(true, true, true, 30.0, 1.0),
                 new BiomesSection(true, 0.35),
                 new VegetationSection(true, 1.0),
                 new GenerationSection(true, false, false, 4),
@@ -100,9 +100,18 @@ public record TerraForgeConfig(
             int bedrockThickness) {
     }
 
-    /** @param defaultOceanDepth depth in metres used where bathymetry is unavailable */
+    /**
+     * @param defaultOceanDepth          depth in metres used where bathymetry is unavailable
+     * @param minVisibleRiverDischargeCms HydroRIVERS long-term mean discharge, in cubic metres per
+     *                                    second, below which a prepared river line is not carved.
+     *                                    The row stays in the database either way -- this only
+     *                                    controls what the current world renders, so raising it later
+     *                                    needs no re-preparation. 0 renders every prepared river,
+     *                                    including the smallest headwaters HydroRIVERS maps.
+     */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record WaterSection(boolean oceans, boolean lakes, boolean rivers, double defaultOceanDepth) {
+    public record WaterSection(boolean oceans, boolean lakes, boolean rivers, double defaultOceanDepth,
+                                double minVisibleRiverDischargeCms) {
     }
 
     /** @param edgeNoise strength of the dithering applied to biome borders (0 disables it) */

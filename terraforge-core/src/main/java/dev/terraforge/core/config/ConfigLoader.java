@@ -91,6 +91,12 @@ public final class ConfigLoader {
         require(pregeneration.checkpointEveryChunks() >= 1,
                 "pregeneration.checkpoint-every-chunks must be at least 1");
 
+        TerraForgeConfig.WaterSection water = config.water();
+        require(water != null, "water section must be present");
+        require(water.defaultOceanDepth() >= 0.0, "water.default-ocean-depth must not be negative");
+        require(water.minVisibleRiverDischargeCms() >= 0.0,
+                "water.min-visible-river-discharge-cms must not be negative");
+
         require(config.cache() != null && config.cache().memoryLimitMb() > 0,
                 "cache.memory-limit-mb must be greater than 0");
         require(config.cache().demTileCacheEntries() > 0, "cache.dem-tile-cache-entries must be greater than 0");
