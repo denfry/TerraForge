@@ -661,12 +661,18 @@ public final class TerraForgePlugin extends JavaPlugin implements Listener {
      * markers through it, and a later BlueMap install picks up everything already there.
      */
     private void initializeMarkers() {        this.markers = new InMemoryGeoMarkerService();
-        var bluemapConfig = config.bluemap();
-        int published = GeoMarkerPopulator.populate(markers, boundaries,
-                GeoMarkerPopulator.Options.defaults(
-                        bluemapConfig != null && bluemapConfig.cityMarkers(),
-                        bluemapConfig != null && bluemapConfig.countryLabels()));
+        int published = GeoMarkerPopulator.populate(markers, boundaries, markerOptions());
         getLogger().info(LOG_PREFIX + "Markers: published " + published + " geographic markers.");
+    }
+
+    /** Builds marker publication limits from {@code bluemap.*}, tolerating a missing section. */
+    private GeoMarkerPopulator.Options markerOptions() {
+        var bluemapConfig = config.bluemap();
+        if (bluemapConfig == null) {
+            return GeoMarkerPopulator.Options.defaults(false, false);
+        }
+        return new GeoMarkerPopulator.Options(bluemapConfig.cityMarkers(), bluemapConfig.countryLabels(),
+                bluemapConfig.maxCityMarkers(), bluemapConfig.minCityPopulation());
     }
 
     /**
@@ -834,11 +840,7 @@ public final class TerraForgePlugin extends JavaPlugin implements Listener {
      * @return the number of markers published
      */
     int refreshMarkers() {
-        var bluemapConfig = config.bluemap();
-        int published = GeoMarkerPopulator.populate(markers, boundaries,
-                GeoMarkerPopulator.Options.defaults(
-                        bluemapConfig != null && bluemapConfig.cityMarkers(),
-                        bluemapConfig != null && bluemapConfig.countryLabels()));
+        int published = GeoMarkerPopulator.populate(markers, boundaries, markerOptions());
         if (blueMap != null) {
             blueMap.refreshMarkers();
         }

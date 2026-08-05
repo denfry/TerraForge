@@ -54,7 +54,7 @@ public record TerraForgeConfig(
                 new CacheSection(1024, 256, DEFAULT_LANDCOVER_GRID_CACHE_ENTRIES,
                         DEFAULT_WATER_FEATURE_CACHE_ENTRIES, 4096, 300),
                 new TownySection(true),
-                new BlueMapSection(true, true, true),
+                new BlueMapSection(true, true, true, 300, 5_000),
                 new DebugSection(false, false),
                 TestRegionSection.centralEurope());
     }
@@ -208,8 +208,28 @@ public record TerraForgeConfig(
     public record TownySection(boolean enabled) {
     }
 
+    /**
+     * @param maxCityMarkers    upper bound on non-capital city markers published to the map;
+     *                          capitals are always kept regardless of this cap
+     * @param minCityPopulation smallest population a non-capital city needs to be published; raise
+     *                          this to drop the flood of small-town markers that make a dense
+     *                          gazetteer unusable (and slow) in a web browser
+     */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record BlueMapSection(boolean enabled, boolean cityMarkers, boolean countryLabels) {
+    public record BlueMapSection(boolean enabled, boolean cityMarkers, boolean countryLabels,
+                                 int maxCityMarkers, long minCityPopulation) {
+
+        /** Matches the historical unlimited-ish default so old configs missing this key keep working. */
+        public static final int DEFAULT_MAX_CITY_MARKERS = 2_000;
+
+        public BlueMapSection {
+            if (maxCityMarkers <= 0) {
+                maxCityMarkers = DEFAULT_MAX_CITY_MARKERS;
+            }
+            if (minCityPopulation < 0) {
+                minCityPopulation = 0;
+            }
+        }
     }
 
     /** @param perPlayer when true, players may toggle their own debug overlay */

@@ -62,16 +62,16 @@ public final class DefaultTerrainPipeline implements TerrainPipeline {
 
     @Override
     public TerrainSample sampleColumn(double latitude, double longitude) {
-        double meters = elevation.elevationAt(latitude, longitude);
-        boolean fallback = ElevationProvider.isNoData(meters);
-        if (fallback) {
-            meters = fallbackElevation;
-        }
+        double rawMeters = elevation.elevationAt(latitude, longitude);
+        boolean fallback = ElevationProvider.isNoData(rawMeters);
+        double meters = fallback ? fallbackElevation : rawMeters;
 
-        // The elevation is passed on rather than looked up again: the fallback water provider is
-        // derived from it, and a second DEM query per column would double the cost of generation.
-        WaterType waterType = classifyWater(latitude, longitude, meters, fallback);
-        double waterSurfaceMeters = waterSurface(latitude, longitude, meters, waterType);
+        // Water is classified from the raw (possibly missing) elevation, never the substituted
+        // fallback: a vector water provider (real coastlines, lakes, rivers) does not need a DEM at
+        // all and must not be skipped just because the DEM has a hole. Only the elevation-derived
+        // fallback provider actually consults the hint, and it already treats NaN as "unknown".
+        WaterType waterType = classifyWater(latitude, longitude, rawMeters);
+        double waterSurfaceMeters = waterSurface(latitude, longitude, rawMeters, waterType);
 
         if (waterType == WaterType.RIVER) {
             // HydroRIVERS has a centreline and discharge, not bathymetry. The provider gives the
@@ -103,13 +103,7 @@ public final class DefaultTerrainPipeline implements TerrainPipeline {
         return new TerrainSample(meters, surfaceY, waterType, waterSurfaceY, cover, biome, fallback);
     }
 
-    private WaterType classifyWater(double latitude, double longitude, double elevationMeters,
-                                    boolean elevationMissing) {
-        // An unprepared column has no evidence of water; flooding it would turn every coverage gap
-        // into an ocean.
-        if (elevationMissing) {
-            return WaterType.NONE;
-        }
+    private WaterType classifyWater(double latitude, double longitude, double elevationMeters) {
         WaterType type = water.waterTypeAt(latitude, longitude, elevationMeters);
         return switch (type) {
             case OCEAN -> oceansEnabled ? type : WaterType.NONE;

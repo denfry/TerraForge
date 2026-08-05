@@ -9,7 +9,14 @@ format. Both are stated explicitly per release, because either one means regener
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-08-05
+
 ### Added
+
+- `bluemap.max-city-markers` and `bluemap.min-city-population` in `terraforge.yml` cap how many city
+  markers get published to the web map. A dense gazetteer can hold tens of thousands of places;
+  publishing all of them flooded the map with marker pins and made the browser lag. Defaults dropped
+  from an effective 2000/0 to 300/5000.
 
 - Managed Earth world lifecycle: `/earth world plan|create|status|verify|abort` stages the primary
   `earth` world (server.properties, bukkit.yml, paper-world.yml and the height datapack) behind a
@@ -51,6 +58,14 @@ format. Both are stated explicitly per release, because either one means regener
 
 ### Fixed
 
+- Ocean, lake and river columns with no DEM coverage were reported as plain land (`water NONE`,
+  falling back to elevation 0 m / beach) instead of consulting the prepared vector water data, which
+  does not need a DEM to know a point is ocean. A point far outside the prepared elevation coverage
+  now still gets classified from real coastline/lake/river geometry when it exists.
+- Karst-constrained caves carved without checking whether the column, or any of the neighbouring
+  columns two blocks out, was water. Karst polygons that graze a coastline could open a cave mouth
+  straight into the seabed. Each carved column is now capped by its own surface height and skipped
+  entirely when it is water.
 - The plugin now enables at `STARTUP` load order, so Bukkit asks TerraForge for the `earth` world's
   generator instead of silently falling back to vanilla terrain.
 - The managed-world check compares absolute, normalized paths, so a `world-container` relative to

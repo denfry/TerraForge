@@ -48,6 +48,16 @@ REAL EARTH DATA → TerraForge CLI → natural Minecraft terrain → players bui
 | Mountains, valleys, plains and deserts | Railways, bridges and airports |
 | Biomes from real land cover | Power lines or industrial areas |
 
+## It matches the real world
+
+BlueMap render of a generated TerraForge coastline (left) next to Google Maps satellite imagery of
+the same coordinates (right, off Gabon/São Tomé and Príncipe) — same coastline, same islands, same
+bathymetry:
+
+<p align="center">
+  <img src="docs/assets/bluemap-vs-real-world.png" alt="TerraForge-generated coastline in BlueMap next to Google Maps satellite imagery of the same real-world coordinates" width="1000">
+</p>
+
 `generation.caves` and `generation.man-made-structures` are both off by default. Caves are
 generated geometry constrained by WOKAM karst polygons and may be anchored at real OSM cave
 entrances; they are not surveyed 3D cave geometry. Man-made vanilla structures remain disabled

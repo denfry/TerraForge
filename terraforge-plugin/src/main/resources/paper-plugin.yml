@@ -2,6 +2,11 @@ name: TerraForge
 version: '${version}'
 main: dev.terraforge.plugin.TerraForgePlugin
 bootstrapper: dev.terraforge.plugin.TerraForgeBootstrap
+# The default world's generator is resolved during server startup, before plugins normally
+# enable -- without STARTUP load order, Bukkit calls getDefaultWorldGenerator() too early and
+# 'earth' silently falls back to vanilla terrain. This mirrors plugin.yml and MUST stay in sync
+# with it: paper-plugin.yml is what Paper actually reads for load order.
+load: STARTUP
 api-version: '${apiVersion}'
 dependencies:
   server:

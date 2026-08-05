@@ -119,6 +119,13 @@ bluemap:
   enabled: true
   city-markers: true
   country-labels: true
+  # Upper bound on non-capital city markers published to the map. Capitals are always kept.
+  # A dense gazetteer can have tens of thousands of places; publishing all of them floods the
+  # web map with markers and makes the browser lag. Lower this if the map still feels heavy.
+  max-city-markers: 300
+  # Smallest population a non-capital city needs to get a marker. Raise this to drop small towns
+  # and villages (including entries with unknown/zero population) from the map.
+  min-city-population: 5000
 
 debug:
   enabled: false
