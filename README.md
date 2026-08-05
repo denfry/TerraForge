@@ -217,6 +217,14 @@ material inside this repository for contributors browsing the source.
 | [Releasing](docs/releasing.md) | Versioning and release checklist |
 | [Troubleshooting](docs/troubleshooting.md) | Common failures and diagnostics |
 
+## Metrics
+
+TerraForge reports anonymous usage statistics via [bStats](https://bstats.org/plugin/bukkit/TerraForge/33013)
+(active servers, projection choice, integration usage). Disable it any time in
+`plugins/bStats/config.yml`.
+
+[![TerraForge bStats graph](https://bstats.org/signatures/bukkit/TerraForge.svg)](https://bstats.org/plugin/bukkit/TerraForge/33013)
+
 ## Project status
 
 Version **0.1.0** is the first public preview. The coordinate system, projections, terrain pipeline,

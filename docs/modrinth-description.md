@@ -150,6 +150,8 @@ TerraForge reports anonymous usage statistics via [bStats](https://bstats.org/pl
 (active servers, projection choice, integration usage). Disable it any time in
 `plugins/bStats/config.yml`.
 
+[![TerraForge bStats graph](https://bstats.org/signatures/bukkit/TerraForge.svg)](https://bstats.org/plugin/bukkit/TerraForge/33013)
+
 </details>
 
 ---
