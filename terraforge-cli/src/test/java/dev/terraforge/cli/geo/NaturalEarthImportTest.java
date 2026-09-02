@@ -147,6 +147,52 @@ class NaturalEarthImportTest {
     }
 
     @Test
+    void keepsAHydroLakesLakeAtItsOwnAltitudeWithItsOwnDepth() throws Exception {
+        Path file = geoJson("""
+                {"type":"FeatureCollection","features":[
+                 {"type":"Feature","properties":{"featurecla":"Lake","name":"Lac Leman",
+                   "Elevation":372,"Depth_avg":154.4},
+                  "geometry":{"type":"Polygon","coordinates":[[[6.2,46.3],[6.9,46.3],[6.9,46.5],[6.2,46.5],[6.2,46.3]]]}}
+                ]}
+                """, "hydrolakes.geojson");
+
+        assertThat(WaterGeoJsonImporter.importFile(file, connection, null).imported()).isEqualTo(1);
+        assertThat(rows("SELECT name, surface_elevation_m FROM water_bodies"))
+                .containsExactly("Lac Leman|372.0");
+        assertThat(rows("SELECT name, bed_depth_m FROM water_bodies"))
+                .containsExactly("Lac Leman|154.4");
+    }
+
+    @Test
+    void aLakeWithNoStatedAltitudeIsStoredAsNullRatherThanSeaLevel() throws Exception {
+        Path file = geoJson("""
+                {"type":"FeatureCollection","features":[
+                 {"type":"Feature","properties":{"featurecla":"Lake","name":"Unknown Tarn"},
+                  "geometry":{"type":"Polygon","coordinates":[[[84,30],[85,30],[85,31],[84,31],[84,30]]]}}
+                ]}
+                """, "lakes.geojson");
+
+        assertThat(WaterGeoJsonImporter.importFile(file, connection, null).imported()).isEqualTo(1);
+        // NULL, not 0.0: at 30N 84E, "sea level" is five kilometres below the ground.
+        assertThat(rows("SELECT name, surface_elevation_m FROM water_bodies"))
+                .containsExactly("Unknown Tarn|null");
+    }
+
+    @Test
+    void anOceanIsStoredAtSeaLevelBecauseThatIsWhatItIs() throws Exception {
+        Path file = geoJson("""
+                {"type":"FeatureCollection","features":[
+                 {"type":"Feature","properties":{"featurecla":"Ocean","name":"Atlantic"},
+                  "geometry":{"type":"Polygon","coordinates":[[[-30,0],[-20,0],[-20,10],[-30,10],[-30,0]]]}}
+                ]}
+                """, "ocean.geojson");
+
+        assertThat(WaterGeoJsonImporter.importFile(file, connection, null).imported()).isEqualTo(1);
+        assertThat(rows("SELECT surface_elevation_m, bed_depth_m FROM water_bodies"))
+                .containsExactly("0.0|0.0");
+    }
+
+    @Test
     void refusesAWaterFileItCannotInterpretAtAll() throws Exception {
         Path file = geoJson("""
                 {"type":"FeatureCollection","features":[

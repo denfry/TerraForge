@@ -1,14 +1,5 @@
 # Configuration
 
-## Caves and structures
-
-`generation.caves` defaults to `false`. When enabled, TerraForge generates deterministic cave
-geometry only inside prepared WOKAM karst polygons; nearby OSM `natural=cave_entrance` points can
-anchor passages. Neither dataset provides global 3D cave surveys.
-
-`generation.man-made-structures` defaults to `false`; keep it disabled to prevent villages,
-temples, mineshafts, strongholds, portals, shipwrecks and other human-made vanilla structures.
-
 The file lives at `plugins/TerraForge/terraforge.yml` and is created from the bundled default on
 first start. Every option is honoured by the runtime; validation is strict and the plugin refuses to
 enable on an invalid configuration rather than generating a broken world.
@@ -85,21 +76,59 @@ rebuilding it.
 | `enabled` | `true` | map real land cover to Minecraft biomes; `false` uses plains everywhere |
 | `edge-noise` | `0.35` | dithering at biome borders so class edges are not pixelated; `0` disables |
 
-## `vegetation`
-
-| Key | Default | Meaning |
-|---|---|---|
-| `enabled` | `true` | natural trees, grass, flowers, cacti, snow, ice |
-| `density` | `1.0` | multiplier on vegetation density |
-
-Vegetation is natural only. No villages, huts or man-made objects exist in any code path.
-
 ## `generation`
 
 | Key | Default | Meaning |
 |---|---|---|
-| `natural-only` | `true` | no structures of any kind. Recommended, and the default |
+| `natural-only` | `true` | no player infrastructure of any kind. Recommended, and the default |
+| `caves` | `false` | TerraForge's own karst cave geometry, and nothing else |
+| `vanilla-caves` | `false` | *also* hand each chunk to vanilla's cave/canyon carvers and its aquifer |
+| `vanilla-decorations` | `false` | hand each chunk to vanilla's whole `applyBiomeDecoration` pass |
+| `man-made-structures` | `false` | vanilla's mixed structure pass; keep it off |
 | `worker-threads` | `4` | threads for asynchronous chunk data preparation |
+
+`caves` generates deterministic cave geometry only inside prepared WOKAM karst polygons; nearby OSM
+`natural=cave_entrance` points can anchor passages. Neither dataset provides global 3D cave surveys.
+The switch reaches `KarstCaveCarver` and stops there — with no karst data prepared it generates
+nothing at all.
+
+`man-made-structures` keeps villages, temples, mineshafts, strongholds, portals, shipwrecks and
+other human-made vanilla structures out of the world.
+
+`caves` was previously reported from `ChunkGenerator.shouldGenerateCaves()`, which is Paper's switch
+for *vanilla's* carvers and aquifer rather than TerraForge's carver: the flag documented here as
+karst caves in fact enabled vanilla worldgen, while the karst carver ran unconditionally. They are
+three keys now because they answer three different questions.
+
+Both vanilla switches default to `false` because Paper's `CustomChunkGenerator` does not adopt this
+world's vertical frame. Every vanilla worldgen stage still reads vanilla's `overworld.json` —
+`min_y -64`, `sea_level 63`, one metre per block — and knows nothing of `terrain.*`. In a world at
+`meters-per-block: 20.0` with `sea-level: 0` that means:
+
+- a routine 30-block vanilla cave removes 600 m of real rock;
+- vanilla's `overworld_carver_replaceables` includes `minecraft:water`, so carvers breach the seabed
+  instead of running under it;
+- the aquifer then refloods whatever was carved below y=63 with water, and below y=-54 with lava —
+  1,260 m of real elevation above that world's sea level.
+
+Measured in the audited world: 249,150 fluid blocks inside dry Tibetan rock per region file, and
+26.20 % of Gulf-of-Guinea ocean columns containing air. None of it is visible from in-game until
+somebody digs into a mountain, which is why the generator logs a WARNING naming this world's sea
+level, `min-y` and metres per block against vanilla's whenever either switch is on in a frame that
+is not vanilla's. A warning and not a refusal: at `sea-level: 63`, `min-y: -64` and 1.0 m per block
+the vanilla stages are exactly as correct here as they are in a vanilla world, and that is a
+legitimate configuration. It is the mixture that is broken.
+
+`vanilla-decorations` is all-or-nothing. Paper exposes one boolean for `applyBiomeDecoration`, so
+trees, grass and flowers arrive together with ore veins, `spring_water`, `spring_lava`, `lake_lava`,
+kelp and seagrass, at vanilla's density — and at coarse `blocks-per-km` a "tree" is kilometres across
+while a lava spring lands at altitude. Keeping the vegetation while omitting the lava lakes and the
+ore veins needs a biome datapack that edits every feature list, not a flag here, which is why the key
+is named for what it does rather than for what one might want from it.
+
+An old `vegetation:` block is ignored: unknown keys never fail a load. Its `density` was never
+honoured by any code path, and its `enabled` was really the switch for vanilla's entire decoration
+pass, now named `generation.vanilla-decorations`.
 
 ## `pregeneration`
 
@@ -138,6 +167,7 @@ explicit and auditable.
 | `memory-limit-mb` | `1024` | soft ceiling across all in-memory caches |
 | `dem-tile-cache-entries` | `256` | resident DEM tiles |
 | `landcover-grid-cache-entries` | `256` | resident prepared land-cover grids |
+| `water-feature-cache-entries` | `4096` | resident decoded natural-water geometries |
 | `chunk-cache-entries` | `4096` | resident prepared chunk samples |
 | `statistics-interval-seconds` | `300` | how often cache stats are logged in debug mode |
 
@@ -158,6 +188,8 @@ thousands of grids on disk and the same 92 MB resident as a single test region.
 | `bluemap.enabled` | `true` | enable the BlueMap bridge when BlueMap is installed |
 | `bluemap.city-markers` | `true` | show real-world city labels |
 | `bluemap.country-labels` | `true` | show country labels |
+| `bluemap.max-city-markers` | `300` | upper bound on non-capital city markers; capitals are always kept |
+| `bluemap.min-city-population` | `5000` | smallest population a non-capital city needs to get a marker |
 
 Both are soft dependencies: a missing plugin is logged and ignored, never fatal.
 

@@ -34,8 +34,9 @@ public final class HydroRiversShapefileImporter {
         try (DbfRows attributes = new DbfRows(dbf); RandomAccessFile file = new RandomAccessFile(shape.toFile(), "r");
              PreparedStatement insert = connection.prepareStatement("""
                      INSERT INTO water_bodies
-                         (name, water_type, min_lat, min_lon, max_lat, max_lon, river_bed_depth_m, discharge_cms, geometry)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         (name, water_type, min_lat, min_lon, max_lat, max_lon, bed_depth_m,
+                          surface_elevation_m, discharge_cms, geometry)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                      """)) {
             if (file.length() < 100) throw new IOException(shape + " is not a Shapefile");
             file.seek(100);
@@ -58,8 +59,12 @@ public final class HydroRiversShapefileImporter {
                     insert.setString(1, blankToNull(row.get("NAME"))); insert.setString(2, WaterType.RIVER.name());
                     insert.setDouble(3, bounds.getMinY()); insert.setDouble(4, bounds.getMinX());
                     insert.setDouble(5, bounds.getMaxY()); insert.setDouble(6, bounds.getMaxX());
-                    insert.setDouble(7, RiverWidth.bedDepthMetres(width)); insert.setDouble(8, discharge);
-                    insert.setBytes(9, new WKBWriter().write(polygon));
+                    insert.setDouble(7, RiverWidth.bedDepthMetres(width));
+                    // A river's water surface is the terrain it runs through, which only the
+                    // generator knows; HydroRIVERS states no absolute level, so the column is NULL.
+                    insert.setNull(8, java.sql.Types.REAL);
+                    insert.setDouble(9, discharge);
+                    insert.setBytes(10, new WKBWriter().write(polygon));
                     insert.executeUpdate(); imported++;
                 } catch (EOFException exception) { throw new IOException(shape + " ends inside a record", exception); }
             }

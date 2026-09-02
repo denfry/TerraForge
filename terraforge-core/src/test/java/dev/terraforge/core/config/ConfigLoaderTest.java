@@ -31,6 +31,11 @@ class ConfigLoaderTest {
         assertThat(config.terrain().seaLevel()).isEqualTo(63);
         assertThat(config.generation().naturalOnly()).isTrue();
         assertThat(config.generation().caves()).isFalse();
+        // The two switches that decide whether vanilla worldgen touches a chunk at all. Both must
+        // ship off: vanilla's carvers, aquifer and decorators read vanilla's vertical frame, not
+        // this world's, and the shipped config is not vanilla's frame.
+        assertThat(config.generation().vanillaCaves()).isFalse();
+        assertThat(config.generation().vanillaDecorations()).isFalse();
         assertThat(config.generation().manMadeStructures()).isFalse();
         assertThat(config.infrastructure().anyEnabled()).isFalse();
         assertThat(config.testRegion().name()).isEqualTo("central-europe");
@@ -64,7 +69,7 @@ class ConfigLoaderTest {
         TerraForgeConfig broken = new TerraForgeConfig(
                 defaults.world(), defaults.scale(), defaults.earth(),
                 new TerraForgeConfig.TerrainSection(63, 320, -64, 1.0, 1.0, 0.0, 8),
-                defaults.water(), defaults.biomes(), defaults.vegetation(), defaults.generation(), defaults.pregeneration(),
+                defaults.water(), defaults.biomes(), defaults.generation(), defaults.pregeneration(),
                 defaults.infrastructure(), defaults.data(), defaults.cache(), defaults.towny(),
                 defaults.bluemap(), defaults.debug(), defaults.testRegion());
 
@@ -78,7 +83,7 @@ class ConfigLoaderTest {
         TerraForgeConfig defaults = TerraForgeConfig.defaults();
         TerraForgeConfig broken = new TerraForgeConfig(
                 defaults.world(), new TerraForgeConfig.ScaleSection(0.0), defaults.earth(),
-                defaults.terrain(), defaults.water(), defaults.biomes(), defaults.vegetation(),
+                defaults.terrain(), defaults.water(), defaults.biomes(),
                 defaults.generation(), defaults.pregeneration(), defaults.infrastructure(), defaults.data(), defaults.cache(),
                 defaults.towny(), defaults.bluemap(), defaults.debug(), defaults.testRegion());
 
@@ -93,7 +98,7 @@ class ConfigLoaderTest {
                 .isEqualTo(new TerraForgeConfig.PregenerationSection(1, true, 18.0, 40.0, 15, 10, 128));
         TerraForgeConfig d = TerraForgeConfig.defaults();
         TerraForgeConfig invalid = new TerraForgeConfig(d.world(), d.scale(), d.earth(), d.terrain(), d.water(),
-                d.biomes(), d.vegetation(), d.generation(),
+                d.biomes(), d.generation(),
                 new TerraForgeConfig.PregenerationSection(0, true, 18.0, 40.0, 15, 10, 128),
                 d.infrastructure(), d.data(), d.cache(), d.towny(), d.bluemap(), d.debug(), d.testRegion());
         assertThatThrownBy(() -> loader.validate(invalid)).isInstanceOf(ConfigLoader.ConfigException.class)
@@ -143,14 +148,14 @@ class ConfigLoaderTest {
     private static TerraForgeConfig withInfrastructure(TerraForgeConfig.InfrastructureSection section) {
         TerraForgeConfig d = TerraForgeConfig.defaults();
         return new TerraForgeConfig(d.world(), d.scale(), d.earth(), d.terrain(), d.water(), d.biomes(),
-                d.vegetation(), d.generation(), d.pregeneration(), section, d.data(), d.cache(), d.towny(), d.bluemap(),
+                d.generation(), d.pregeneration(), section, d.data(), d.cache(), d.towny(), d.bluemap(),
                 d.debug(), d.testRegion());
     }
 
     private static TerraForgeConfig withData(TerraForgeConfig.DataSection section) {
         TerraForgeConfig d = TerraForgeConfig.defaults();
         return new TerraForgeConfig(d.world(), d.scale(), d.earth(), d.terrain(), d.water(), d.biomes(),
-                d.vegetation(), d.generation(), d.pregeneration(), d.infrastructure(), section, d.cache(), d.towny(),
+                d.generation(), d.pregeneration(), d.infrastructure(), section, d.cache(), d.towny(),
                 d.bluemap(), d.debug(), d.testRegion());
     }
 }

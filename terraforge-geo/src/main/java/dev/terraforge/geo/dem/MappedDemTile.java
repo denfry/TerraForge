@@ -21,6 +21,12 @@ import java.nio.file.StandardOpenOption;
  */
 public final class MappedDemTile implements DemTile {
 
+    /**
+     * Share of the bilinear weight that must come from prepared samples for a point to have a
+     * height at all. Half: the point is closer to real data than to a void, or it has none.
+     */
+    private static final double MINIMUM_DATA_WEIGHT = 0.5;
+
     private final TfDemHeader header;
     private final ByteBuffer samples;
     private final GeoBounds bounds;
@@ -151,7 +157,53 @@ public final class MappedDemTile implements DemTile {
             totalWeight += weight;
         }
 
-        return totalWeight == 0.0 ? ElevationProvider.NO_DATA : weighted / totalWeight;
+        // A value is reported only when most of the interpolation weight was real data. Renormalising
+        // over whatever corners happen to be prepared is what turns a point sitting almost entirely
+        // over a void into the height of one distant corner -- an invented elevation, indistinguishable
+        // from a measured one. Harmless on today's void-free tiles; a trap on a sparser source.
+        return totalWeight < MINIMUM_DATA_WEIGHT ? ElevationProvider.NO_DATA : weighted / totalWeight;
+    }
+
+    @Override
+    public SampleTotal averageWithin(double minLatitude, double minLongitude,
+                                     double maxLatitude, double maxLongitude, int maxSamplesPerAxis) {
+        if (maxSamplesPerAxis < 1) {
+            throw new IllegalArgumentException("maxSamplesPerAxis must be at least 1: " + maxSamplesPerAxis);
+        }
+        // The east and south edges duplicate the neighbouring tile's west and north edges, so this
+        // tile owns [0, width-2] x [0, height-2]. A 1x1 grid owns nothing and can only be sampled.
+        int lastX = header.width() - 2;
+        int lastY = header.height() - 2;
+        if (lastX < 0 || lastY < 0) {
+            return SampleTotal.EMPTY;
+        }
+        // Exactly the owned grid indices whose coordinate lies inside the box. Intersecting after
+        // rounding rather than clamping first is what keeps a box lying wholly off this tile from
+        // collapsing onto its nearest edge sample and contributing a height from the wrong ground.
+        int x0 = Math.max(0, (int) Math.ceil((minLongitude - bounds.minLongitude()) / longitudeStep));
+        int x1 = Math.min(lastX, (int) Math.floor((maxLongitude - bounds.minLongitude()) / longitudeStep));
+        // Grid rows run north to south, so the box's northern edge gives the first row.
+        int y0 = Math.max(0, (int) Math.ceil((bounds.maxLatitude() - maxLatitude) / latitudeStep));
+        int y1 = Math.min(lastY, (int) Math.floor((bounds.maxLatitude() - minLatitude) / latitudeStep));
+        if (x1 < x0 || y1 < y0) {
+            // The box falls between two samples, or outside this tile's owned grid entirely.
+            return SampleTotal.EMPTY;
+        }
+
+        int strideX = (x1 - x0) / maxSamplesPerAxis + 1;
+        int strideY = (y1 - y0) / maxSamplesPerAxis + 1;
+        double sum = 0.0;
+        int count = 0;
+        for (int y = y0; y <= y1; y += strideY) {
+            for (int x = x0; x <= x1; x += strideX) {
+                double value = sample(x, y);
+                if (!ElevationProvider.isNoData(value)) {
+                    sum += value;
+                    count++;
+                }
+            }
+        }
+        return count == 0 ? SampleTotal.EMPTY : new SampleTotal(sum, count);
     }
 
     private static double clamp(double value, int max) {

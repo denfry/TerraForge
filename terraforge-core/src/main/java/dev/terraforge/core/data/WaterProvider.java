@@ -23,22 +23,55 @@ public interface WaterProvider {
     }
 
     /**
-     * Water surface elevation in metres, for lakes that do not sit at sea level (Lake Geneva at
-     * 372 m). Returns 0 for ocean, and {@link ElevationProvider#NO_DATA} when unknown.
+     * Everything the terrain stage needs to know about water at one column, resolved in a single
+     * lookup.
+     *
+     * <p>One call, not three. Classification, surface elevation and bed depth used to be separate
+     * queries, which meant three spatial-index lookups and three geometry {@code covers} tests per
+     * column -- and, worse, three answers that could disagree: a bounded geometry cache evicting
+     * between the calls let a column be classified as a lake and then told it had no lake surface.
+     * A column's water is one fact, so it is one query.
+     *
+     * @param knownElevationMeters the column's elevation, or {@link ElevationProvider#NO_DATA} when
+     *                             the DEM does not cover it. A provider derived from elevation uses
+     *                             it instead of looking the DEM up again; a provider backed by its
+     *                             own vector data uses it only where the source has no absolute
+     *                             surface elevation of its own (river centrelines).
      */
-    double waterSurfaceElevation(double latitude, double longitude);
-
-    /** Water surface, with the column's elevation already known. See the hint above. */
-    default double waterSurfaceElevation(double latitude, double longitude, double knownElevationMeters) {
-        return waterSurfaceElevation(latitude, longitude);
-    }
+    WaterColumn waterColumnAt(double latitude, double longitude, double knownElevationMeters);
 
     /**
-     * Depth to carve below a river's water surface, in metres. Non-river providers return zero.
-     * The value is prepared from the source channel width, so generation remains read-only.
+     * The water at one column.
+     *
+     * @param type                   classification; {@link WaterType#NONE} means dry land
+     * @param surfaceElevationMeters water surface above sea level -- 0 for ocean, the lake's own
+     *                               altitude for a lake (Lake Geneva at 372 m), the terrain height
+     *                               for a river. {@link ElevationProvider#NO_DATA} when the source
+     *                               does not know it, which callers must read as "cannot place this
+     *                               water", never as "sea level": guessing sea level for a Tibetan
+     *                               lake is a five-kilometre error.
+     * @param bedDepthMeters         how far below the surface the bed sits, for water bodies whose
+     *                               source ships a depth rather than bathymetry (rivers, lakes).
+     *                               0 for ocean, whose floor comes from the DEM's bathymetry or the
+     *                               configured default depth.
      */
-    default double riverBedDepthMeters(double latitude, double longitude, double knownElevationMeters) {
-        return 0.0;
+    record WaterColumn(WaterType type, double surfaceElevationMeters, double bedDepthMeters) {
+
+        /** No water here. */
+        public static final WaterColumn DRY =
+                new WaterColumn(WaterType.NONE, ElevationProvider.NO_DATA, 0.0);
+
+        /** The ocean, whose surface is sea level by definition. */
+        public static final WaterColumn OCEAN = new WaterColumn(WaterType.OCEAN, 0.0, 0.0);
+
+        public boolean isWater() {
+            return type.isWater();
+        }
+
+        /** True when this is water that can actually be placed: it has a known surface elevation. */
+        public boolean hasKnownSurface() {
+            return type.isWater() && !ElevationProvider.isNoData(surfaceElevationMeters);
+        }
     }
 
     /** Water classification of one column. */

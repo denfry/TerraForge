@@ -20,7 +20,6 @@ public record TerraForgeConfig(
         TerrainSection terrain,
         WaterSection water,
         BiomesSection biomes,
-        VegetationSection vegetation,
         GenerationSection generation,
         PregenerationSection pregeneration,
         InfrastructureSection infrastructure,
@@ -46,8 +45,7 @@ public record TerraForgeConfig(
                 new TerrainSection(63, -64, 320, 1.0, 1.0, 0.0, 8),
                 new WaterSection(true, true, true, 30.0, 1.0),
                 new BiomesSection(true, 0.35),
-                new VegetationSection(true, 1.0),
-                new GenerationSection(true, false, false, 4),
+                new GenerationSection(true, false, false, false, false, 4),
                 PregenerationSection.defaults(),
                 InfrastructureSection.allDisabled(),
                 new DataSection("data", "cache", "terraforge.db"),
@@ -119,22 +117,30 @@ public record TerraForgeConfig(
     public record BiomesSection(boolean enabled, double edgeNoise) {
     }
 
-    /** @param density multiplier on natural vegetation density (trees, grass, flowers) */
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    public record VegetationSection(boolean enabled, double density) {
-    }
-
     /**
-     * @param naturalOnly     retained for existing configuration files; TerraForge never generates
-     *                        player infrastructure.
-     * @param caves           enables generated geometry constrained by prepared karst data. It is
-     *                        off by default so existing worlds never change unexpectedly.
+     * @param naturalOnly       retained for existing configuration files; TerraForge never generates
+     *                          player infrastructure.
+     * @param caves             enables TerraForge's own cave geometry, constrained by prepared WOKAM
+     *                          karst data and anchored at prepared OSM cave entrances. Off by
+     *                          default so existing worlds never change unexpectedly.
+     * @param vanillaCaves      hands each chunk to vanilla's cave and canyon carvers <em>and</em> its
+     *                          aquifer. Off by default, and it should stay off unless this world's
+     *                          vertical frame is vanilla's: those stages work in vanilla's own frame
+     *                          (min y -64, sea level 63, one metre per block) and know nothing of
+     *                          {@code terrain.*}. In a 20 m-per-block world a routine 30-block cave
+     *                          deletes 600 m of real rock, vanilla's carvers are allowed to replace
+     *                          water, and the aquifer refills whatever they breach up to y=63.
+     * @param vanillaDecorations hands each chunk to vanilla's decoration pass. All of it or none of
+     *                          it: trees, grass and flowers come with ore veins, {@code spring_lava},
+     *                          {@code lake_lava} and kelp, placed at vanilla's density in whatever
+     *                          vertical frame this world uses. Off by default for the same reason.
      * @param manMadeStructures enables vanilla's mixed structure pass. This is off by default and
-     *                        is not used while natural-only is enabled.
-     * @param workerThreads   threads used for asynchronous chunk data preparation
+     *                          is not used while natural-only is enabled.
+     * @param workerThreads     threads used for asynchronous chunk data preparation
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record GenerationSection(boolean naturalOnly, boolean caves, boolean manMadeStructures,
+    public record GenerationSection(boolean naturalOnly, boolean caves, boolean vanillaCaves,
+                                    boolean vanillaDecorations, boolean manMadeStructures,
                                     int workerThreads) {
     }
 

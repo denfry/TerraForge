@@ -58,38 +58,37 @@ final class LazySqliteWaterProvider implements WaterProvider, AutoCloseable {
 
     @Override
     public WaterType waterTypeAt(double latitude, double longitude) {
+        CatalogEntry best = bestAt(latitude, longitude);
+        return best == null ? WaterType.NONE : best.type();
+    }
+
+    @Override
+    public WaterColumn waterColumnAt(double latitude, double longitude, double knownElevationMeters) {
+        CatalogEntry best = bestAt(latitude, longitude);
+        return best == null ? WaterColumn.DRY : best.toColumn(knownElevationMeters);
+    }
+
+    /**
+     * The highest-priority catalogued feature covering the point, or {@code null}.
+     *
+     * <p>Both queries go through here so classification and attributes always describe the same
+     * feature. Decoding geometry is what costs; the R-tree query and the priority comparison do not.
+     */
+    private CatalogEntry bestAt(double latitude, double longitude) {
         if (!Double.isFinite(latitude) || !Double.isFinite(longitude)) {
-            return WaterType.NONE;
+            return null;
         }
         Point point = point(latitude, longitude);
-        return candidatesAt(latitude, longitude).stream()
-                .filter(entry -> covers(entry, point))
-                .map(CatalogEntry::type)
-                .max(Comparator.comparingInt(LazySqliteWaterProvider::priority))
-                .orElse(WaterType.NONE);
-    }
-
-    @Override
-    public double waterSurfaceElevation(double latitude, double longitude) {
-        return waterTypeAt(latitude, longitude).isWater() ? 0.0 : ElevationProvider.NO_DATA;
-    }
-
-    @Override
-    public double waterSurfaceElevation(double latitude, double longitude, double knownElevationMeters) {
-        return waterTypeAt(latitude, longitude) == WaterType.RIVER ? knownElevationMeters
-                : waterSurfaceElevation(latitude, longitude);
-    }
-
-    @Override
-    public double riverBedDepthMeters(double latitude, double longitude, double knownElevationMeters) {
-        if (!Double.isFinite(latitude) || !Double.isFinite(longitude)) {
-            return 0.0;
+        CatalogEntry best = null;
+        for (CatalogEntry entry : candidatesAt(latitude, longitude)) {
+            if (!covers(entry, point)) {
+                continue;
+            }
+            if (best == null || priority(entry.type()) > priority(best.type())) {
+                best = entry;
+            }
         }
-        Point point = point(latitude, longitude);
-        return candidatesAt(latitude, longitude).stream()
-                .filter(entry -> entry.type() == WaterType.RIVER && covers(entry, point))
-                .mapToDouble(CatalogEntry::riverBedDepthMetres)
-                .max().orElse(0.0);
+        return best;
     }
 
     @SuppressWarnings("unchecked")
@@ -108,8 +107,14 @@ final class LazySqliteWaterProvider implements WaterProvider, AutoCloseable {
     /**
      * Reads and parses one feature's geometry on a cache miss. Guarded by {@link #connectionLock}:
      * Paper generates chunks on several threads at once, and a JDBC connection is not safe to share
-     * across them without one. A miss is cached as empty rather than retried, so a corrupt row costs
-     * one failed decode instead of one per lookup against the cell it covers.
+     * across them without one.
+     *
+     * <p>A failure is cached as empty rather than retried, so a corrupt row costs one failed decode
+     * instead of one per lookup against the cell it covers. That has a consequence worth naming: the
+     * feature becomes land for the rest of the session, so an undecodable lake silently drains. It is
+     * logged at WARNING with the row id -- once, because the empty result is cached -- and the row id
+     * is enough to find and re-prepare the offending feature. Retrying instead would turn one corrupt
+     * row into a decode attempt per column of the cell it covers, for the life of the server.
      */
     private Optional<PreparedGeometry> decode(CatalogEntry entry) {
         synchronized (connectionLock) {
@@ -117,13 +122,17 @@ final class LazySqliteWaterProvider implements WaterProvider, AutoCloseable {
                 geometryById.setLong(1, entry.id());
                 try (ResultSet rows = geometryById.executeQuery()) {
                     if (!rows.next()) {
+                        LOG.log(System.Logger.Level.WARNING, "Water feature {0} was catalogued but its "
+                                + "row is gone; treating it as land. Re-run `terraforge prepare-geo`.",
+                                entry.id());
                         return Optional.empty();
                     }
                     Geometry geometry = new WKBReader().read(rows.getBytes("geometry"));
                     return Optional.of(PreparedGeometryFactory.prepare(geometry));
                 }
             } catch (Exception exception) {
-                LOG.log(System.Logger.Level.WARNING, "Cannot decode water feature {0}: {1}",
+                LOG.log(System.Logger.Level.WARNING, "Cannot decode water feature {0} ({1}); treating "
+                        + "it as land for this session. Re-run `terraforge prepare-geo`.",
                         entry.id(), exception.getMessage());
                 return Optional.empty();
             }
@@ -158,8 +167,25 @@ final class LazySqliteWaterProvider implements WaterProvider, AutoCloseable {
         }
     }
 
-    /** One catalogued feature: bounding box and type, read cheaply; geometry decoded on demand. */
-    record CatalogEntry(long id, WaterType type, Envelope envelope, double riverBedDepthMetres,
-                         double dischargeCubicMetresPerSecond) {
+    /**
+     * One catalogued feature: bounding box and attributes, read cheaply; geometry decoded on demand.
+     *
+     * @param surfaceElevationMetres absolute water surface, or {@link ElevationProvider#NO_DATA}
+     *                               when {@code surface_elevation_m} was NULL in the prepared row
+     * @param bedDepthMetres         bed depth below the surface, 0 when the source shipped none
+     */
+    record CatalogEntry(long id, WaterType type, Envelope envelope, double surfaceElevationMetres,
+                         double bedDepthMetres, double dischargeCubicMetresPerSecond) {
+
+        WaterColumn toColumn(double knownElevationMeters) {
+            return new WaterColumn(type, switch (type) {
+                case OCEAN -> 0.0;
+                // HydroRIVERS ships a centreline and a discharge, never an absolute water level:
+                // a river's surface is the terrain height it runs through.
+                case RIVER -> knownElevationMeters;
+                case LAKE -> surfaceElevationMetres;
+                case NONE -> ElevationProvider.NO_DATA;
+            }, bedDepthMetres);
+        }
     }
 }

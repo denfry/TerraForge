@@ -9,8 +9,103 @@ format. Both are stated explicitly per release, because either one means regener
 
 ## [Unreleased]
 
+**This release changes both the prepared data format and the world format.** Two migrations are
+not optional:
+
+- **Re-prepare the database.** `water_bodies` gained `surface_elevation_m` and `bed_depth_m` (the
+  latter replacing `river_bed_depth_m`), so run `terraforge prepare-geo` -- or `prepare-region` --
+  against every prepared `terraforge.db`. A database that predates those columns is **refused at
+  startup**, and that refusal is the point: without a lake's stated altitude every lake in the world
+  would be dropped without a word, so the plugin says so and falls back to the elevation-derived
+  water provider for the session instead. Prepared `.tfdem` DEM tiles are **not** affected and need
+  no re-preparation.
+- **Regenerate the world.** Column heights change -- a block's elevation is now the mean of the DEM
+  samples its footprint covers rather than the sample under its centre, and a lake now sits at its
+  own altitude. Chunks generated before this release disagree with chunks generated after it, so a
+  partial regeneration leaves a **permanent vertical seam** along the boundary between the two.
+  Regenerate the whole world, not part of it.
+
+### Added
+
+- `generation.vanilla-caves` (default `false`) hands each chunk to vanilla's cave and canyon carvers
+  and its aquifer. It is off by default because those stages read vanilla's vertical frame
+  (`min_y -64`, `sea_level 63`, one metre per block) from `overworld.json` and never TerraForge's:
+  at `meters-per-block: 20.0` a routine 30-block vanilla cave removes 600 m of real rock, vanilla's
+  `overworld_carver_replaceables` includes `minecraft:water` so its carvers breach the seabed rather
+  than running under it, and the aquifer then refloods everything carved below y=63 with water (and
+  below y=-54 with lava) -- 1,260 m of real elevation above that world's sea level.
+- `generation.vanilla-decorations` (default `false`) hands each chunk to vanilla's whole
+  `applyBiomeDecoration` pass. All of it or none of it: trees, grass and flowers arrive together with
+  ore veins, `spring_water`, `spring_lava`, `lake_lava`, kelp and seagrass, at vanilla's density.
+- The generator logs a WARNING when either vanilla switch is on and the world's vertical frame is
+  not vanilla's, because that combination is a terrain-destroying configuration rather than a taste
+  one.
+- The startup banner reports which generation stages actually run (`Caves:` and `Decorations:`), and
+  the jar now records the git commit it was built from plus a dirty flag
+  (`terraforge-build.properties`, read by `BuildProvenance`), logged as `Build:` and `Jar sha256:`
+  lines and warned about loudly when the build is dirty or unknown. A production jar was found
+  containing source present in no commit, and nothing in the log could reveal it.
+
+### Changed
+
+- **Breaking for third-party providers** (`terraforge-core` publishes to mavenLocal):
+  `WaterProvider.waterSurfaceElevation` and `riverBedDepthMeters` are gone, replaced by one
+  `waterColumnAt(latitude, longitude, knownElevationMeters)` returning a
+  `WaterColumn(type, surfaceElevationMeters, bedDepthMeters)` record. A column's water is one fact,
+  so it is one query: one spatial-index lookup and one geometry `covers` test per column instead of
+  three, and three answers that can no longer contradict each other when the bounded geometry cache
+  evicts between two of them.
+- `ElevationProvider` gained `averageElevationAt(lat, lon, latitudeSpan, longitudeSpan)`, defaulting
+  to a point sample, and `DemTile` gained `averageWithin(...)`. Existing implementations keep
+  compiling and keep point-sampling.
+- `water_bodies.river_bed_depth_m` is now `bed_depth_m` and applies to lakes as well as rivers
+  (HydroLAKES `Depth_avg` beside the width-derived river channel depth). The new
+  `surface_elevation_m` holds the absolute water-surface elevation: HydroLAKES' `Elevation` for a
+  lake, `0` for the ocean, NULL for a river, whose surface is the terrain it runs through and is
+  resolved at generation time. NULL means *unknown*, and the runtime declines to place that water
+  body at all rather than read it as sea level.
+
+### Removed
+
+- The `vegetation` config section (`vegetation.enabled`, `vegetation.density`). `density` was never
+  read by any code path, and `enabled` was never TerraForge's own vegetation -- it was the switch for
+  vanilla's entire decoration pass, which is now named `generation.vanilla-decorations` and is off by
+  default. TerraForge has no vegetation stage of its own and never had one. An existing
+  `terraforge.yml` keeps loading; both keys are ignored.
+
 ### Fixed
 
+- `generation.caves` did not generate TerraForge's karst caves. It was returned from
+  `ChunkGenerator.shouldGenerateCaves()`, which is Paper's switch for *vanilla's* carvers and
+  aquifer, while `KarstCaveCarver` ran unconditionally regardless of the setting. In a scaled world
+  the flag documented as "TerraForge's karst caves" was therefore quietly enabling the vanilla
+  worldgen that a scaled vertical frame cannot survive: the audited world held 249,150 fluid blocks
+  inside dry Tibetan rock per region file, and 26.20 % of Gulf-of-Guinea ocean columns contained air.
+  `generation.caves` now drives the karst carver and nothing else; vanilla's stages have their own
+  two switches, both off.
+- Every mountain lake generated as a dry lake bed painted with `Biome.RIVER`. The runtime answered
+  `0.0` -- sea level -- for every lake's surface elevation, because the prepared schema had nowhere
+  to store the real one. Combined with an uncommitted clamp in the deployed jar, that deleted up to
+  5,540 m of Tibetan plateau. A lake now generates at its own altitude with its bed carved below its
+  own surface, and a lake whose altitude the source does not state is not placed at all.
+- Terrain was rougher than the Earth. One block's elevation came from a point sample at the block
+  centre, which at coarse `blocks-per-km` reads one of the many DEM samples the block covers and
+  turns the difference between two adjacent samples into a block-to-block step. Averaging over the
+  block's geographic footprint cut mean absolute block-to-block height difference from 12.75 to 10.71
+  in the Himalaya and from 10.66 to 8.83 in the Alps -- about a fifth of the roughness was the
+  sampler's own. The average is deterministic, bounded at 16 samples per axis, reads neighbouring
+  tiles, counts a shared tile edge once, and falls back to interpolating the centre when the
+  footprint is finer than the DEM grid. `/earth whereami` and the CLI still point-sample: they ask
+  about a place, not about a block.
+- A point sitting almost entirely over a void was given an elevation anyway. Bilinear interpolation
+  renormalised over whichever corners happened to hold data, so one distant sample could speak for a
+  point that had none, and the result was indistinguishable from measured ground. A height is now
+  reported only when at least half the bilinear weight came from prepared samples. Coastal behaviour
+  is unchanged -- a point mostly over real data still keeps its own height.
+- The shipped `terraforge.yml` disagreed with the documented defaults and with
+  `TerraForgeConfig.defaults()`: `blocks-per-km` was `2.0` and `min-visible-river-discharge-cms` was
+  `40.0`, against `1.0` for both. A fresh install generated a different world from the one the docs
+  describe.
 - Glacier terrain below 2000 m no longer maps to vanilla's `ICE_SPIKES` biome. That biome carries its
   own noise-driven "ice_spike" decorator feature with no relationship to real glacier surfaces --
   visible as an erratic forest of packed-ice columns wherever a coastal snowfield was mapped. It now

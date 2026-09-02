@@ -24,13 +24,41 @@ dependencies {
     testRuntimeOnly("io.papermc.paper:paper-api:$paperVersion")
 }
 
+// --- Build provenance ------------------------------------------------------
+// A shipped jar that names no commit cannot be traced back to reviewed source, which is exactly how
+// a jar built from an uncommitted working tree reached production unnoticed. Record the commit and a
+// dirty flag -- and nothing else: the root build script pins archives to reproducible output, so a
+// build timestamp would make every rebuild differ.
+val repoRoot = rootProject.layout.projectDirectory.asFile
+
+// providers.exec (not "...".execute() or project.exec) so this stays configuration-cache compatible.
+fun gitOutput(vararg arguments: String): String? {
+    val output = providers.exec {
+        workingDir = repoRoot
+        commandLine(listOf("git") + arguments)
+        isIgnoreExitValue = true
+    }
+    // git may be missing from PATH, or this may be a source tarball with no .git directory. Neither
+    // is a broken build, so provenance degrades to "unknown" instead of failing.
+    return runCatching {
+        if (output.result.get().exitValue == 0) output.standardOutput.asText.get() else null
+    }.getOrNull()
+}
+
+val gitCommit = gitOutput("rev-parse", "HEAD")?.trim()?.takeIf { it.length == 40 } ?: "unknown"
+// Non-empty porcelain output means tracked changes or untracked files -- either way the tree does
+// not match gitCommit. A failed `git status` stays "unknown" rather than claiming a clean tree.
+val gitDirty = gitOutput("status", "--porcelain")?.let { it.isNotBlank().toString() } ?: "unknown"
+
 tasks.named<ProcessResources>("processResources") {
     val props = mapOf(
         "version" to project.version.toString(),
         "apiVersion" to minecraftVersion.substringBeforeLast('.'),
+        "commit" to gitCommit,
+        "dirty" to gitDirty,
     )
     inputs.properties(props)
-    filesMatching(listOf("plugin.yml", "paper-plugin.yml")) { expand(props) }
+    filesMatching(listOf("plugin.yml", "paper-plugin.yml", "terraforge-build.properties")) { expand(props) }
 }
 
 tasks.shadowJar {

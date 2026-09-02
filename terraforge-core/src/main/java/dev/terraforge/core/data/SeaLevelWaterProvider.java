@@ -34,14 +34,11 @@ public final class SeaLevelWaterProvider implements WaterProvider {
     }
 
     @Override
-    public double waterSurfaceElevation(double latitude, double longitude) {
-        return waterSurfaceElevation(latitude, longitude, elevation.elevationAt(latitude, longitude));
-    }
-
-    @Override
-    public double waterSurfaceElevation(double latitude, double longitude, double knownElevationMeters) {
+    public WaterColumn waterColumnAt(double latitude, double longitude, double knownElevationMeters) {
+        // The only water this provider can honestly report is the ocean, and its surface is sea
+        // level by definition. There is no bed depth: the DEM's own negative values are the floor.
         return waterTypeAt(latitude, longitude, knownElevationMeters) == WaterType.OCEAN
-                ? 0.0
-                : ElevationProvider.NO_DATA;
+                ? WaterColumn.OCEAN
+                : WaterColumn.DRY;
     }
 }

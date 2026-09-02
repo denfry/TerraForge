@@ -32,6 +32,23 @@ public interface ElevationProvider {
      */
     double elevationAt(double latitude, double longitude);
 
+    /**
+     * Mean elevation over a geographic footprint, or {@link #NO_DATA} when nothing covers it.
+     *
+     * <p>What one Minecraft block actually needs. A block at one block per kilometre covers roughly
+     * 130 arc-second DEM samples; reading one of them and calling it the block's height is
+     * point sampling a signal far above the sampling rate, and it shows up as block-to-block
+     * roughness the Earth does not have. The mean over the footprint is the correct decimation, and
+     * it is deterministic: the same footprint always reads the same samples.
+     *
+     * <p>The default is a point sample, which is also the answer for a zero-sized footprint -- a
+     * question about a place rather than about a block.
+     */
+    default double averageElevationAt(double latitude, double longitude,
+                                      double latitudeSpanDegrees, double longitudeSpanDegrees) {
+        return elevationAt(latitude, longitude);
+    }
+
     /** True when prepared data covers the point, without loading it. */
     boolean hasCoverage(double latitude, double longitude);
 

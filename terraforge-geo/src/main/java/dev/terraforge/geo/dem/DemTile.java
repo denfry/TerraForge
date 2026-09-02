@@ -35,6 +35,32 @@ public interface DemTile {
      */
     double interpolate(double latitude, double longitude);
 
+    /**
+     * Sum and count of this tile's samples inside a geographic box, for footprint averaging.
+     *
+     * <p>Sum and count rather than a mean, because a footprint may straddle a tile border and the
+     * caller has to combine several tiles' contributions without weighting a two-sample sliver the
+     * same as a hundred-sample interior.
+     *
+     * <p>The box is clipped to this tile, and the tile's east and south edges are deliberately
+     * excluded: {@code .tfdem} tiles are edge-inclusive in the SRTM style, so those rows duplicate
+     * the neighbouring tile's west and north edges and counting both would weight one line of
+     * ground twice.
+     *
+     * @param maxSamplesPerAxis upper bound on samples read per axis; larger boxes are strided so a
+     *                          coarse {@code blocks-per-km} cannot turn one column into a
+     *                          megabyte-scale scan. Must be at least 1.
+     */
+    SampleTotal averageWithin(double minLatitude, double minLongitude,
+                              double maxLatitude, double maxLongitude, int maxSamplesPerAxis);
+
+    /** Partial footprint aggregate from one tile. */
+    record SampleTotal(double sum, int count) {
+
+        /** Nothing of this tile lay inside the box, or every sample in it was a void. */
+        public static final SampleTotal EMPTY = new SampleTotal(0.0, 0);
+    }
+
     /** Bytes this tile occupies, for cache accounting. */
     long sizeBytes();
 }

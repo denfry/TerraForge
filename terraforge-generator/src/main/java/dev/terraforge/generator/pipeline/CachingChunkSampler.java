@@ -17,7 +17,9 @@ import dev.terraforge.core.terrain.TerrainSample;
  *
  * <p>Column centres, not corners: sampling the middle of each block keeps a chunk's terrain
  * continuous with its neighbour's, since two adjacent chunks then sample two different points
- * rather than arguing over the shared edge.
+ * rather than arguing over the shared edge. The centre locates the block; the block's whole
+ * geographic footprint decides its height, so a kilometre-wide block reports the mean of the
+ * ground it covers instead of whichever DEM sample happens to sit under its middle.
  */
 public final class CachingChunkSampler implements ChunkSampler {
 
@@ -39,16 +41,21 @@ public final class CachingChunkSampler implements ChunkSampler {
 
     private ChunkSamples compute(int chunkX, int chunkZ) {
         TerrainSample[] samples = new TerrainSample[ChunkSamples.SIZE * ChunkSamples.SIZE];
+        GeoBounds bounds = transformer.chunkBounds(chunkX, chunkZ);
+        // The ground one block covers, in degrees. Derived from the chunk's own bounds because every
+        // supported projection is linear (or very nearly so) across sixteen blocks, which makes this
+        // two projections per chunk instead of two per column.
+        double latitudeSpan = bounds.latitudeSpan() / ChunkSamples.SIZE;
+        double longitudeSpan = bounds.longitudeSpan() / ChunkSamples.SIZE;
         double baseX = chunkX * 16.0;
         double baseZ = chunkZ * 16.0;
         for (int localZ = 0; localZ < ChunkSamples.SIZE; localZ++) {
             for (int localX = 0; localX < ChunkSamples.SIZE; localX++) {
                 GeoPoint point = transformer.toGeographic(baseX + localX + 0.5, baseZ + localZ + 0.5);
-                samples[localZ * ChunkSamples.SIZE + localX] =
-                        pipeline.sampleColumn(point.latitude(), point.longitude());
+                samples[localZ * ChunkSamples.SIZE + localX] = pipeline.sampleColumn(
+                        point.latitude(), point.longitude(), latitudeSpan, longitudeSpan);
             }
         }
-        GeoBounds bounds = transformer.chunkBounds(chunkX, chunkZ);
         return new ChunkSamples(chunkX, chunkZ, bounds, samples);
     }
 

@@ -48,6 +48,21 @@ clash with another plugin's copy of Jackson or HikariCP.
 - `config` — typed `terraforge.yml` model and strict validation
 - `cache` — `CacheManager`, `ManagedCache`, `CacheStatistics`
 
+Two provider SPIs changed shape, because the generator asks about a *block* and used to ask badly.
+`terraforge-core` publishes to mavenLocal, so a third-party provider has to follow:
+
+| SPI | Method | Why |
+|---|---|---|
+| `ElevationProvider` | `averageElevationAt(lat, lon, latSpan, lonSpan)` beside `elevationAt(lat, lon)` | a block covers a footprint, not a point; the default implementation is still a point sample |
+| `WaterProvider` | `waterColumnAt(lat, lon, knownElevationMeters)` → `WaterColumn(type, surfaceElevationMeters, bedDepthMeters)` | replaces `waterSurfaceElevation` and `riverBedDepthMeters` |
+
+A column's water is one fact, so it is one query. Classification, surface elevation and bed depth
+used to be three calls — three spatial-index lookups and three geometry `covers` tests per column —
+and, worse, three answers that could contradict each other: the bounded geometry cache evicting
+between two of them let a column be classified as a lake and then told it had no lake surface.
+`WaterColumn.surfaceElevationMeters` is `NO_DATA` when the source ships no absolute level, and a
+caller must read that as "this water cannot be placed", never as sea level.
+
 ### Geo — `terraforge-geo`
 
 - `dem` — `.tfdem` tiles: `DemTileKey`, `DemTile`, `DemReader`, `TfDemFormat`
@@ -64,18 +79,28 @@ clash with another plugin's copy of Jackson or HikariCP.
 
 ```
 Minecraft chunk (x, z)
-  → CoordinateTransformer.chunkBounds        geographic bounds
-  → ElevationProvider                        DEM tile lookup, bilinear interpolation
-  → WaterProvider                            ocean / lake / river classification
+  → CoordinateTransformer.chunkBounds        geographic bounds, and one block's footprint in degrees
+  → ElevationProvider.averageElevationAt     DEM tiles under that footprint, averaged
+  → WaterProvider.waterColumnAt              type + surface elevation + bed depth, one lookup
   → BiomeProvider                            climate biome from land cover + elevation + latitude
   → VerticalScale                            elevation (m) → Minecraft Y
   → terrain shaping                          stone / surface / water columns
-  → natural vegetation                       trees, grass, snow, ice
+  → KarstCaveCarver                          only when `generation.caves` is on
   → chunk output
 ```
 
 Sampling is **per column, not per block**: 256 samples for a chunk, cached as one
-`ChunkSampler.ChunkSamples` object.
+`ChunkSampler.ChunkSamples` object. The column's elevation is the mean of the DEM samples that
+block's geographic footprint covers, not the sample under its centre — see [dem.md](dem.md#sampling).
+
+**There is no vegetation stage, and there never was one.** TerraForge grows nothing: trees, grass
+and flowers only ever arrived from vanilla's own decoration pass, which the generator now exposes
+as the explicit `generation.vanilla-decorations` switch and leaves off by default. The same is true
+of `generation.vanilla-caves`. Those stages read vanilla's vertical frame (`min_y -64`,
+`sea_level 63`, one metre per block) rather than this world's `terrain.*`, so in a scaled world they
+edit the terrain by hundreds of metres at a time; the generator logs a warning when either switch is
+on and the frame is not vanilla's. `generation.caves` drives TerraForge's own `KarstCaveCarver` and
+nothing else.
 
 Determinism is a contract: the same geographic point, dataset and configuration always produce the
 same terrain. Noise, where used, is seeded from the geographic position — never from wall time or a

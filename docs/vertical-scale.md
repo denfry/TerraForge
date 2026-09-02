@@ -82,6 +82,34 @@ Manual copying is a fallback only for building or inspecting a world outside the
 `/earth world create` because Paper 1.21.8+ only lets the primary world carry a non-vanilla
 dimension type.
 
+## Vanilla worldgen does not share this frame
+
+The datapack settles what the *world* is. It does not settle what vanilla's own generation stages
+believe. Paper wraps a plugin generator in `CustomChunkGenerator`, and that wrapper reports vanilla's
+`getMinY()` and `getSeaLevel()` — vanilla's `overworld.json`: `min_y -64`, `sea_level 63`, one metre
+per block — not this world's. Any vanilla stage left enabled therefore works in a vertical frame
+unrelated to `terrain.*`, with no error and no clamp.
+
+Two switches expose it, and both default to `false`: `generation.vanilla-caves` (vanilla's
+cave/canyon carvers and its aquifer) and `generation.vanilla-decorations` (vanilla's whole
+decoration pass). At `meters-per-block: 20.0` a 30-block vanilla cave removes 600 m of real rock,
+vanilla's carvers may replace water so they breach the seabed rather than run under it, and the
+aquifer then refloods the breach with water up to y=63 — 1,260 m of real elevation above that
+world's sea level — and with lava below y=-54.
+
+`TerraForgeChunkGenerator` logs a WARNING at startup when either switch is on and this world's frame
+is not vanilla's, naming both frames:
+
+```
+[WARNING] generation.vanilla-caves/vanilla-decorations are enabled, but this world's
+          vertical frame (sea level 0, min y -512, 20.0 m per block) is not vanilla's
+          (63/-64/1.0).
+```
+
+It warns rather than refuses because the regional profile — `sea-level: 63`, `−64..320`, 1 m per
+block — *is* vanilla's frame, and there those stages are as correct as they are in a vanilla world.
+Only the mixture is broken. See [configuration.md](configuration.md#generation).
+
 ## Checking it
 
 The startup banner reports what the configuration can actually represent:

@@ -10,7 +10,7 @@ world:
 scale:
   # Horizontal scale. 1.0 => one block covers one kilometre of ground.
   # Supported presets: 0.5 (1 block = 2 km), 1.0, 2.0 (1 block = 500 m), 5.0 (1 block = 200 m).
-  blocks-per-km: 2.0
+  blocks-per-km: 1.0
 
 earth:
   # Geographic point that maps to Minecraft x=0, z=0.
@@ -51,27 +51,41 @@ water:
   default-ocean-depth: 30.0
   # HydroRIVERS discharge (m^3/s) below which a prepared river is not carved. Preparation keeps every
   # mapped river, including the smallest headwaters -- this only decides what the current world
-  # renders, so raising it needs no re-preparation. 0 renders all of them, which at coarse
-  # blocks-per-km settings can look like a dense, hairy network rather than distinct rivers.
-  min-visible-river-discharge-cms: 40.0
+  # renders, so raising it needs no re-preparation. At 1.0 the whole connected network renders, which
+  # at coarse blocks-per-km settings can look like a dense, hairy web rather than distinct rivers;
+  # raise it to thin the network out. 0 renders every prepared line.
+  min-visible-river-discharge-cms: 1.0
 
 biomes:
   enabled: true
   # Dithering applied at biome borders so class edges are not pixelated. 0 disables it.
   edge-noise: 0.35
 
-vegetation:
-  enabled: true
-  # Multiplier on natural vegetation density (trees, grass, flowers).
-  density: 0.5
-
 generation:
   # Natural terrain only: no player infrastructure is generated.
   # Strongly recommended - players and Towny provide all infrastructure.
   natural-only: true
-  # Generated cave geometry is constrained by prepared WOKAM karst polygons and may be anchored
-  # at prepared OSM natural=cave_entrance points. It is not a survey of real 3D cave geometry.
+
+  # TerraForge's own cave geometry, constrained by prepared WOKAM karst polygons and anchored at
+  # prepared OSM natural=cave_entrance points. It is not a survey of real 3D cave geometry.
+  # This switch drives TerraForge's carver and nothing else.
   caves: false
+
+  # Hand each chunk to vanilla's cave/canyon carvers and its aquifer as well.
+  #
+  # Leave this off unless this world's vertical frame IS vanilla's (sea-level 63, min-y -64,
+  # meters-per-block 1.0). Those stages read vanilla's frame, not terrain.* -- so at 20 m per block
+  # a routine 30-block cave removes 600 m of real rock, vanilla's carvers are permitted to replace
+  # water (they breach the seabed instead of running under it), and the aquifer then floods whatever
+  # they carved below y=63 with water, or below y=-54 with lava.
+  vanilla-caves: false
+
+  # Hand each chunk to vanilla's decoration pass. All of it or none of it: trees, grass and flowers
+  # arrive together with ore veins, spring_water, spring_lava, lake_lava, kelp and seagrass, at
+  # vanilla's density. At coarse blocks-per-km a "tree" is kilometres across and a lava spring lands
+  # at altitude, which is why this is off by default.
+  vanilla-decorations: false
+
   # Vanilla's structure pass mixes natural and man-made structures; leave this off to prevent
   # villages, temples, mineshafts, strongholds and other human-made generation.
   man-made-structures: false

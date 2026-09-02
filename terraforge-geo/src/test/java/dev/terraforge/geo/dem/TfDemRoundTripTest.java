@@ -87,6 +87,22 @@ class TfDemRoundTripTest {
     }
 
     @Test
+    void aPointMostlyOverAVoidHasNoHeightAtAll() throws IOException {
+        DemTileKey key = new DemTileKey(0, 0);
+        writeTile(TfDemHeader.int16(key, 2, 2), new double[][] {
+                {100.0, ElevationProvider.NO_DATA},
+                {ElevationProvider.NO_DATA, ElevationProvider.NO_DATA},
+        });
+
+        DemTile tile = MappedDemTile.open(directory.resolve(key.fileName()));
+        // 96% of the way into the hole. Renormalising over the one prepared corner would report
+        // 100 m here -- a height nothing measured, indistinguishable from a real sample downstream.
+        assertThat(ElevationProvider.isNoData(tile.interpolate(0.2, 0.8))).isTrue();
+        // Close enough to the prepared corner that most of the weight is real: still 100 m.
+        assertThat(tile.interpolate(0.8, 0.2)).isCloseTo(100.0, METER);
+    }
+
+    @Test
     void allNeighboursMissingYieldsNoData() throws IOException {
         DemTileKey key = new DemTileKey(0, 0);
         writeTile(TfDemHeader.int16(key, 2, 2), new double[][] {

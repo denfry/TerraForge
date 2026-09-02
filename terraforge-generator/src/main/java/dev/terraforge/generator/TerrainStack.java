@@ -103,7 +103,7 @@ public final class TerrainStack {
     /** A chunk generator bound to this stack; one per world. */
     public TerraForgeChunkGenerator chunkGenerator() {
         return new TerraForgeChunkGenerator(pipeline, verticalScale, biomeMapper,
-                config.terrain().bedrockThickness(), config.vegetation().enabled(), config.generation().caves(),
-                transformer, karst);
+                config.terrain().bedrockThickness(),
+                TerraForgeChunkGenerator.Features.from(config.generation()), transformer, karst);
     }
 }

@@ -1,6 +1,7 @@
 package dev.terraforge.geo.water;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import dev.terraforge.core.data.WaterProvider;
 import dev.terraforge.core.data.WaterProvider.WaterType;
@@ -75,6 +76,59 @@ class SqliteWaterProviderTest {
         }
     }
 
+    @Test
+    void aPreparedLakeReportsItsOwnAltitudeAndBedDepth() throws Exception {
+        Path database = createDatabase();
+        insertLake(database, 46.0, 6.0, 47.0, 7.0, 372.0, 154.0);
+
+        WaterProvider provider = SqliteWaterProvider.load(database);
+        try {
+            var column = provider.waterColumnAt(46.5, 6.5, 371.0);
+            assertThat(column.type()).isEqualTo(WaterType.LAKE);
+            assertThat(column.surfaceElevationMeters()).isEqualTo(372.0);
+            assertThat(column.bedDepthMeters()).isEqualTo(154.0);
+        } finally {
+            close(provider);
+        }
+    }
+
+    @Test
+    void aPreparedLakeWithoutASurfaceElevationIsNotAssumedToBeAtSeaLevel() throws Exception {
+        Path database = createDatabase();
+        // surface_elevation_m stays NULL, as an import from a source that ships no lake altitude
+        // leaves it. Reading NULL as getDouble()'s 0.0 would put this lake at sea level, which for a
+        // Himalayan lake is a five-kilometre error and used to delete the mountain under it.
+        insertWaterBody(database, "LAKE", 30.0, 84.0, 31.0, 85.0);
+
+        WaterProvider provider = SqliteWaterProvider.load(database);
+        try {
+            var column = provider.waterColumnAt(30.5, 84.5, 5440.0);
+            assertThat(column.type()).isEqualTo(WaterType.LAKE);
+            assertThat(column.hasKnownSurface()).isFalse();
+        } finally {
+            close(provider);
+        }
+    }
+
+    @Test
+    void aDatabasePreparedBeforeLakeSurfacesIsRejectedWithAnActionableMessage() throws Exception {
+        Path database = temporaryDirectory.resolve("old.db");
+        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + database);
+             var statement = connection.createStatement()) {
+            // The pre-surface_elevation_m shape, verbatim.
+            statement.executeUpdate("CREATE TABLE water_bodies (id INTEGER PRIMARY KEY, name TEXT, "
+                    + "water_type TEXT NOT NULL, min_lat REAL NOT NULL, min_lon REAL NOT NULL, "
+                    + "max_lat REAL NOT NULL, max_lon REAL NOT NULL, "
+                    + "river_bed_depth_m REAL NOT NULL DEFAULT 0, discharge_cms REAL NOT NULL DEFAULT 0, "
+                    + "geometry BLOB NOT NULL)");
+        }
+
+        assertThatThrownBy(() -> SqliteWaterProvider.load(database))
+                .isInstanceOf(java.io.IOException.class)
+                .hasMessageContaining("surface_elevation_m")
+                .hasMessageContaining("prepare-geo");
+    }
+
     private Path createDatabase() throws Exception {
         Path database = temporaryDirectory.resolve("terraforge.db");
         try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + database)) {
@@ -95,6 +149,28 @@ class SqliteWaterProviderTest {
             statement.setDouble(4, maxLatitude);
             statement.setDouble(5, maxLongitude);
             statement.setBytes(6, new WKBWriter().write(GEOMETRY_FACTORY.createPolygon(new Coordinate[]{
+                    new Coordinate(minLongitude, minLatitude), new Coordinate(maxLongitude, minLatitude),
+                    new Coordinate(maxLongitude, maxLatitude), new Coordinate(minLongitude, maxLatitude),
+                    new Coordinate(minLongitude, minLatitude)
+            })));
+            statement.executeUpdate();
+        }
+    }
+
+    /** A lake as an import from a source that ships an altitude and a depth writes it. */
+    private void insertLake(Path database, double minLatitude, double minLongitude, double maxLatitude,
+                             double maxLongitude, double surfaceMetres, double bedDepthMetres) throws Exception {
+        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + database);
+             PreparedStatement statement = connection.prepareStatement("INSERT INTO water_bodies "
+                     + "(water_type, min_lat, min_lon, max_lat, max_lon, surface_elevation_m, "
+                     + "bed_depth_m, geometry) VALUES ('LAKE', ?, ?, ?, ?, ?, ?, ?)")) {
+            statement.setDouble(1, minLatitude);
+            statement.setDouble(2, minLongitude);
+            statement.setDouble(3, maxLatitude);
+            statement.setDouble(4, maxLongitude);
+            statement.setDouble(5, surfaceMetres);
+            statement.setDouble(6, bedDepthMetres);
+            statement.setBytes(7, new WKBWriter().write(GEOMETRY_FACTORY.createPolygon(new Coordinate[]{
                     new Coordinate(minLongitude, minLatitude), new Coordinate(maxLongitude, minLatitude),
                     new Coordinate(maxLongitude, maxLatitude), new Coordinate(minLongitude, maxLatitude),
                     new Coordinate(minLongitude, minLatitude)

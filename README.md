@@ -58,10 +58,13 @@ bathymetry:
   <img src="docs/assets/bluemap-vs-real-world.png" alt="TerraForge-generated coastline in BlueMap next to Google Maps satellite imagery of the same real-world coordinates" width="1000">
 </p>
 
-`generation.caves` and `generation.man-made-structures` are both off by default. Caves are
-generated geometry constrained by WOKAM karst polygons and may be anchored at real OSM cave
-entrances; they are not surveyed 3D cave geometry. Man-made vanilla structures remain disabled
-unless an operator explicitly opts in.
+`generation.caves` and `generation.man-made-structures` are both off by default. `generation.caves`
+drives TerraForge's own carver and nothing else: generated geometry constrained by WOKAM karst
+polygons, optionally anchored at real OSM cave entrances, not surveyed 3D cave geometry. Vanilla's
+carvers and vanilla's decoration pass are separate switches (`generation.vanilla-caves`,
+`generation.vanilla-decorations`), also off, because they work in vanilla's vertical frame rather
+than this world's. Man-made vanilla structures remain disabled unless an operator explicitly opts
+in.
 
 ## Requirements
 

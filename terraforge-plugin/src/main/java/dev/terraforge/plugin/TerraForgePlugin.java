@@ -283,6 +283,20 @@ public final class TerraForgePlugin extends JavaPlugin implements Listener {
         getLogger().info(line);
         getLogger().info("TerraForge - Real Earth Engine");
         getLogger().info(line);
+        // Reading ~10 MB off disk once at enable is a fair price for knowing which jar is running:
+        // without it, "the fix is deployed" is an assumption rather than an observation.
+        BuildProvenance provenance = BuildProvenance.load();
+        getLogger().info("Build:        " + provenance.describe());
+        getLogger().info("Jar sha256:   " + BuildProvenance.sha256(getFile()));
+        if (provenance.dirty()) {
+            getLogger().warning(LOG_PREFIX + "DIRTY BUILD -- not reproducible from any commit. This jar was "
+                    + "built from a working tree with uncommitted changes, so no commit describes the code "
+                    + "that is running: the terrain it generates cannot be reproduced or trusted.");
+        } else if (!provenance.commitKnown()) {
+            getLogger().warning(LOG_PREFIX + "Build provenance is unknown -- this jar records no commit, so "
+                    + "the running code cannot be matched to reviewed source and the terrain it generates "
+                    + "cannot be reproduced.");
+        }
         getLogger().info("World:        " + config.world().name());
         getLogger().info("Scale:        " + config.scale().blocksPerKm() + " blocks/km ("
                 + String.format("%.0f m", transformer.metersPerBlock()) + " per block)");
@@ -305,7 +319,18 @@ public final class TerraForgePlugin extends JavaPlugin implements Listener {
         getLogger().info("Towny:        " + integrations.townyStatus());
         getLogger().info("BlueMap:      " + integrations.blueMapStatus());
         getLogger().info("Natural-only: " + (config.generation().naturalOnly() ? "ENABLED" : "DISABLED"));
+        // Which stages actually run, spelled out: "caves: true" used to mean vanilla's carvers, and
+        // nobody could tell from the log which generator had touched a chunk.
+        var generation = config.generation();
+        getLogger().info("Caves:        TerraForge karst " + onOff(generation.caves())
+                + ", vanilla carvers " + onOff(generation.vanillaCaves()));
+        getLogger().info("Decorations:  vanilla pass " + onOff(generation.vanillaDecorations())
+                + " (trees, ores, springs and lava lakes together)");
         getLogger().info(line);
+    }
+
+    private static String onOff(boolean enabled) {
+        return enabled ? "ON" : "off";
     }
 
     /**

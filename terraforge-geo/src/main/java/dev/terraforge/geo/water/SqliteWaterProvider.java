@@ -2,6 +2,7 @@ package dev.terraforge.geo.water;
 
 import dev.terraforge.core.cache.CacheManager;
 import dev.terraforge.core.cache.ManagedCache;
+import dev.terraforge.core.data.ElevationProvider;
 import dev.terraforge.core.data.WaterProvider;
 import dev.terraforge.core.data.WaterProvider.WaterType;
 import java.io.IOException;
@@ -12,8 +13,11 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 import org.locationtech.jts.geom.Envelope;
 import org.locationtech.jts.geom.prep.PreparedGeometry;
 
@@ -70,6 +74,10 @@ public final class SqliteWaterProvider {
             ManagedCache<Long, Optional<PreparedGeometry>> geometries =
                     cacheManager.newCache("water-features", maxResidentFeatures);
             return new LazySqliteWaterProvider(connection, geometryById, entries, geometries);
+        } catch (IOException exception) {
+            closeQuietly(connection);
+            throw new IOException("Cannot load natural water data from " + database + ": "
+                    + exception.getMessage(), exception);
         } catch (SQLException exception) {
             closeQuietly(connection);
             throw new IOException("Cannot load natural water data from " + database, exception);
@@ -81,11 +89,12 @@ public final class SqliteWaterProvider {
 
     /** Reads bounding boxes only -- never the geometry column -- so cataloguing costs milliseconds. */
     private static List<LazySqliteWaterProvider.CatalogEntry> catalogue(Connection connection,
-            double minVisibleRiverDischargeCms) throws SQLException {
+            double minVisibleRiverDischargeCms) throws SQLException, IOException {
+        requirePreparedColumns(connection);
         List<LazySqliteWaterProvider.CatalogEntry> entries = new ArrayList<>();
         try (PreparedStatement statement = connection.prepareStatement(
-                "SELECT id, water_type, min_lat, min_lon, max_lat, max_lon, river_bed_depth_m, discharge_cms "
-                        + "FROM water_bodies");
+                "SELECT id, water_type, min_lat, min_lon, max_lat, max_lon, bed_depth_m, "
+                        + "surface_elevation_m, discharge_cms FROM water_bodies");
              ResultSet rows = statement.executeQuery()) {
             while (rows.next()) {
                 WaterType type = WaterType.valueOf(rows.getString("water_type"));
@@ -99,11 +108,40 @@ public final class SqliteWaterProvider {
                 Envelope envelope = new Envelope(
                         rows.getDouble("min_lon"), rows.getDouble("max_lon"),
                         rows.getDouble("min_lat"), rows.getDouble("max_lat"));
+                // SQL NULL reads as 0.0 through getDouble, which for a water surface is sea level --
+                // the exact wrong answer. wasNull() is the only way to tell "at sea level" from
+                // "unknown", and the runtime treats the two very differently.
+                double surface = rows.getDouble("surface_elevation_m");
+                if (rows.wasNull()) {
+                    surface = ElevationProvider.NO_DATA;
+                }
                 entries.add(new LazySqliteWaterProvider.CatalogEntry(
-                        rows.getLong("id"), type, envelope, rows.getDouble("river_bed_depth_m"), discharge));
+                        rows.getLong("id"), type, envelope, surface,
+                        rows.getDouble("bed_depth_m"), discharge));
             }
         }
         return entries;
+    }
+
+    /**
+     * Fails closed on a database prepared by an older TerraForge.
+     *
+     * <p>Without {@code surface_elevation_m} every lake's altitude is unknown, and a world generated
+     * from such a database would silently drop every lake. Saying so is better than generating it.
+     */
+    private static void requirePreparedColumns(Connection connection) throws SQLException, IOException {
+        Set<String> columns = new HashSet<>();
+        try (PreparedStatement statement = connection.prepareStatement("PRAGMA table_info(water_bodies)");
+             ResultSet rows = statement.executeQuery()) {
+            while (rows.next()) {
+                columns.add(rows.getString("name").toLowerCase(Locale.ROOT));
+            }
+        }
+        if (!columns.containsAll(List.of("surface_elevation_m", "bed_depth_m"))) {
+            throw new IOException("prepared water data predates lake surface elevations "
+                    + "(water_bodies has no surface_elevation_m/bed_depth_m); re-run "
+                    + "`terraforge prepare-geo` against this database");
+        }
     }
 
     private static void closeQuietly(Connection connection) {

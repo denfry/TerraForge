@@ -17,6 +17,19 @@ message names the exact key. Common causes:
 | `blocks-per-km must be greater than 0` | use 0.5, 1.0, 2.0 or 5.0 |
 | `Unknown projection` | use `equirectangular`, `web_mercator` or `plate_carree` |
 
+## `DIRTY BUILD` or unknown build provenance at startup
+
+```
+[TerraForge] DIRTY BUILD -- not reproducible from any commit.
+```
+
+The jar was built from a working tree with uncommitted changes, so no commit describes the code that
+is running and the terrain it generates cannot be reproduced. The other variant, `Build provenance
+is unknown`, means the jar records no commit at all — it was not built by Gradle from a git
+checkout. Neither is fatal, and both matter before you trust a bug report or a fix: rebuild from a
+clean checkout and compare the banner's `Build:` and `Jar sha256:` lines against the jar you meant
+to deploy.
+
 ## The world is flat / all ocean
 
 The DEM is not being found. Check:
@@ -47,6 +60,45 @@ Elevation exceeded `max-y` and was soft-clamped. Either raise `terrain.max-y`, o
 
 At `blocks-per-km: 1.0` one block spans ~33 DEM samples, so the DEM is heavily downsampled. Raise
 `blocks-per-km`, or raise `terrain.vertical-exaggeration` to make the remaining relief more visible.
+
+## Water or lava inside a mountain, or air inside the sea
+
+`generation.vanilla-caves` or `generation.vanilla-decorations` is enabled in a world whose vertical
+frame is not vanilla's. Those stages read vanilla's `overworld.json` — `min_y -64`, `sea_level 63`,
+one metre per block — and never `terrain.*`: at `meters-per-block: 20.0` a routine 30-block vanilla
+cave removes 600 m of real rock, vanilla's carvers are permitted to replace water so they breach the
+seabed instead of running under it, and the aquifer then refloods the breach with water up to y=63
+and with lava below y=-54. Measured in the audited world: 249,150 fluid blocks inside dry Tibetan
+rock per region file, and 26.20 % of Gulf-of-Guinea ocean columns containing air.
+
+The startup banner says which stages run, and warns when the frames disagree:
+
+```
+Caves:        TerraForge karst off, vanilla carvers ON
+Decorations:  vanilla pass ON (trees, ores, springs and lava lakes together)
+[TerraForge-Generator] generation.vanilla-caves/vanilla-decorations are enabled, but this
+world's vertical frame (sea level 0, min y -512, 20.0 m per block) is not vanilla's (63/-64/1.0).
+```
+
+Set both keys to `false` and restart — or run the world in vanilla's frame, where those stages are
+correct. Already-generated chunks keep the damage; nothing rewrites them, so the affected region has
+to be regenerated. See [vertical-scale.md](vertical-scale.md) and
+[configuration.md](configuration.md#generation).
+
+## Mountain lakes generate as dry beds, or not at all
+
+The prepared water data carries no `surface_elevation_m`, so every lake's surface altitude is
+unknown, and an unknown surface means the water body is refused rather than placed — the alternative,
+reading unknown as `0.0`, put every mountain lake at sea level. A database predating the column is
+rejected at load:
+
+```
+prepared water data predates lake surface elevations (water_bodies has no
+surface_elevation_m/bed_depth_m); re-run `terraforge prepare-geo` against this database
+```
+
+after which the plugin falls back to elevation-derived water. Re-run `terraforge prepare-geo` (or
+`prepare-region`) against the database. The `.tfdem` tiles are unaffected and need no re-preparation.
 
 ## `/earth whereami` says "unknown country"
 

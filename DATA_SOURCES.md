@@ -140,7 +140,8 @@ karst polygons alone when none is.
 
 Caves are **off by default** (`generation.caves: false`). Enabling them changes existing worlds, so
 it is an explicit decision, and it needs prepared karst data — with none, the setting generates
-nothing.
+nothing. The switch reaches TerraForge's own carver only; vanilla's carvers are the separate
+`generation.vanilla-caves`, which uses no data from this section.
 
 Attribution, required by the BGR terms:
 

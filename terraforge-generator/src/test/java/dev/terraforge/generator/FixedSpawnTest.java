@@ -79,7 +79,8 @@ class FixedSpawnTest {
         CoordinateTransformer transformer = new CoordinateTransformer(
                 new EquirectangularProjection(0), new GeoPoint(0, 0), 1);
 
-        return new TerraForgeChunkGenerator(pipeline, verticalScale, mock(BiomeMapper.class), 3, false, false,
+        return new TerraForgeChunkGenerator(pipeline, verticalScale, mock(BiomeMapper.class), 3,
+                new TerraForgeChunkGenerator.Features(false, false, false),
                 transformer, KarstProvider.absent());
     }
 }

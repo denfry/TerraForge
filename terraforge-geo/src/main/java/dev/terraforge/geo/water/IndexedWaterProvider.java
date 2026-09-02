@@ -2,9 +2,9 @@ package dev.terraforge.geo.water;
 
 import dev.terraforge.core.data.ElevationProvider;
 import dev.terraforge.core.data.WaterProvider;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.Envelope;
 import org.locationtech.jts.geom.Geometry;
 import org.locationtech.jts.geom.GeometryFactory;
@@ -40,39 +40,39 @@ public final class IndexedWaterProvider implements WaterProvider {
 
     @Override
     public WaterType waterTypeAt(double latitude, double longitude) {
+        IndexedFeature best = bestAt(latitude, longitude);
+        return best == null ? WaterType.NONE : best.feature().type();
+    }
+
+    @Override
+    public WaterColumn waterColumnAt(double latitude, double longitude, double knownElevationMeters) {
+        IndexedFeature best = bestAt(latitude, longitude);
+        return best == null ? WaterColumn.DRY : best.feature().toColumn(knownElevationMeters);
+    }
+
+    /**
+     * The highest-priority feature covering the point, or {@code null}.
+     *
+     * <p>Shared by both queries on purpose: classification and attributes must come from the same
+     * feature, or a river's depth can end up applied to a lake's surface.
+     */
+    private IndexedFeature bestAt(double latitude, double longitude) {
         if (!Double.isFinite(latitude) || !Double.isFinite(longitude)) {
-            return WaterType.NONE;
+            return null;
         }
-        Point point = GEOMETRY_FACTORY.createPoint(new org.locationtech.jts.geom.Coordinate(longitude, latitude));
+        Point point = GEOMETRY_FACTORY.createPoint(new Coordinate(longitude, latitude));
         @SuppressWarnings("unchecked")
         List<IndexedFeature> candidates = index.query(new Envelope(longitude, longitude, latitude, latitude));
-        return candidates.stream()
-                .filter(candidate -> candidate.geometry().covers(point))
-                .map(IndexedFeature::feature)
-                .map(WaterFeature::type)
-                .max(Comparator.comparingInt(IndexedWaterProvider::priority))
-                .orElse(WaterType.NONE);
-    }
-
-    @Override
-    public double waterSurfaceElevation(double latitude, double longitude) {
-        return waterTypeAt(latitude, longitude).isWater() ? 0.0 : ElevationProvider.NO_DATA;
-    }
-
-    @Override
-    public double waterSurfaceElevation(double latitude, double longitude, double knownElevationMeters) {
-        return waterTypeAt(latitude, longitude) == WaterType.RIVER ? knownElevationMeters
-                : waterSurfaceElevation(latitude, longitude);
-    }
-
-    @Override
-    public double riverBedDepthMeters(double latitude, double longitude, double knownElevationMeters) {
-        Point point = GEOMETRY_FACTORY.createPoint(new org.locationtech.jts.geom.Coordinate(longitude, latitude));
-        @SuppressWarnings("unchecked")
-        List<IndexedFeature> candidates = index.query(new Envelope(longitude, longitude, latitude, latitude));
-        return candidates.stream().filter(candidate -> candidate.geometry().covers(point))
-                .map(IndexedFeature::feature).filter(feature -> feature.type() == WaterType.RIVER)
-                .mapToDouble(WaterFeature::riverBedDepthMetres).max().orElse(0.0);
+        IndexedFeature best = null;
+        for (IndexedFeature candidate : candidates) {
+            if (!candidate.geometry().covers(point)) {
+                continue;
+            }
+            if (best == null || priority(candidate.feature().type()) > priority(best.feature().type())) {
+                best = candidate;
+            }
+        }
+        return best;
     }
 
     private static int priority(WaterType type) {
@@ -90,21 +90,40 @@ public final class IndexedWaterProvider implements WaterProvider {
         }
     }
 
-    /** One vetted natural water geometry. Man-made data is rejected by the offline importer. */
-    public record WaterFeature(WaterType type, Geometry geometry, double riverBedDepthMetres) {
+    /**
+     * One vetted natural water geometry. Man-made data is rejected by the offline importer.
+     *
+     * @param surfaceElevationMetres absolute water surface above sea level, or
+     *                               {@link ElevationProvider#NO_DATA} when the source did not ship
+     *                               one. Ignored for ocean (sea level) and river (terrain height).
+     * @param bedDepthMetres         bed depth below the surface, 0 when unknown
+     */
+    public record WaterFeature(WaterType type, Geometry geometry, double surfaceElevationMetres,
+                                double bedDepthMetres) {
         public WaterFeature {
             Objects.requireNonNull(type, "type");
             Objects.requireNonNull(geometry, "geometry");
             if (type == WaterType.NONE) {
                 throw new IllegalArgumentException("Water features must have a water type");
             }
-            if (!Double.isFinite(riverBedDepthMetres) || riverBedDepthMetres < 0.0) {
-                throw new IllegalArgumentException("River bed depth must be finite and non-negative");
+            if (!(bedDepthMetres >= 0.0) || !Double.isFinite(bedDepthMetres)) {
+                throw new IllegalArgumentException("Bed depth must be finite and non-negative");
             }
         }
 
         public WaterFeature(WaterType type, Geometry geometry) {
-            this(type, geometry, 0.0);
+            this(type, geometry, ElevationProvider.NO_DATA, 0.0);
+        }
+
+        WaterColumn toColumn(double knownElevationMeters) {
+            return new WaterColumn(type, switch (type) {
+                case OCEAN -> 0.0;
+                // A river's surface is the terrain it runs through: HydroRIVERS ships a centreline
+                // and a discharge, never an absolute water level.
+                case RIVER -> knownElevationMeters;
+                case LAKE -> surfaceElevationMetres;
+                case NONE -> ElevationProvider.NO_DATA;
+            }, bedDepthMetres);
         }
     }
 }

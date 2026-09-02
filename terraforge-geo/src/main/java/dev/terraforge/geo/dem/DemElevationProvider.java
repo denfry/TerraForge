@@ -4,6 +4,7 @@ import dev.terraforge.core.cache.CacheManager;
 import dev.terraforge.core.cache.CacheStatistics;
 import dev.terraforge.core.cache.ManagedCache;
 import dev.terraforge.core.coord.GeoBounds;
+import dev.terraforge.core.coord.GeoPoint;
 import dev.terraforge.core.data.ElevationProvider;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -28,6 +29,15 @@ public final class DemElevationProvider implements ElevationProvider {
 
     /** Share of the cache budget the DEM tiles may occupy; the rest is chunk samples and geodata. */
     private static final double CACHE_BUDGET_FRACTION = 0.6;
+
+    /**
+     * Samples read per axis when averaging a block's footprint.
+     *
+     * <p>Sixteen is past the point of diminishing returns for anti-aliasing a kilometre-wide block
+     * against arc-second data, and it bounds the work: without a cap, a coarse {@code blocks-per-km}
+     * would make one column read a quarter of a tile.
+     */
+    private static final int MAX_FOOTPRINT_SAMPLES_PER_AXIS = 16;
 
     private final DemReader reader;
     private final ManagedCache<DemTileKey, Optional<DemTile>> tiles;
@@ -79,6 +89,44 @@ public final class DemElevationProvider implements ElevationProvider {
         DemTileKey key = DemTileKey.of(latitude, longitude);
         Optional<DemTile> tile = tiles.get(key, this::load);
         return tile.map(t -> t.interpolate(latitude, longitude)).orElse(NO_DATA);
+    }
+
+    @Override
+    public double averageElevationAt(double latitude, double longitude,
+                                     double latitudeSpanDegrees, double longitudeSpanDegrees) {
+        if (!Double.isFinite(latitude) || !Double.isFinite(longitude)
+                || !(latitudeSpanDegrees > 0.0) || !(longitudeSpanDegrees > 0.0)) {
+            return elevationAt(latitude, longitude);
+        }
+        double minLatitude = GeoPoint.clampLatitude(latitude - latitudeSpanDegrees / 2.0);
+        double maxLatitude = GeoPoint.clampLatitude(latitude + latitudeSpanDegrees / 2.0);
+        double minLongitude = longitude - longitudeSpanDegrees / 2.0;
+        double maxLongitude = longitude + longitudeSpanDegrees / 2.0;
+
+        double sum = 0.0;
+        int count = 0;
+        // A block's footprint is a rounding error next to a one-degree tile, so this is one tile in
+        // the overwhelming majority of columns and at most four at a tile corner. Walking the tiles
+        // is also what finally makes the average correct across a tile border: a single tile clamps
+        // its own edge and would otherwise average a duplicated line of samples.
+        int lastLatDegree = (int) Math.floor(maxLatitude);
+        int lastLonDegree = (int) Math.floor(maxLongitude);
+        for (int latDegree = (int) Math.floor(minLatitude); latDegree <= lastLatDegree; latDegree++) {
+            for (int lonDegree = (int) Math.floor(minLongitude); lonDegree <= lastLonDegree; lonDegree++) {
+                Optional<DemTile> tile = tiles.get(new DemTileKey(latDegree, lonDegree), this::load);
+                if (tile.isEmpty()) {
+                    continue;
+                }
+                DemTile.SampleTotal total = tile.get().averageWithin(minLatitude, minLongitude,
+                        maxLatitude, maxLongitude, MAX_FOOTPRINT_SAMPLES_PER_AXIS);
+                sum += total.sum();
+                count += total.count();
+            }
+        }
+        // A footprint finer than the DEM grid covers no sample at all -- which is the normal case at
+        // fine blocks-per-km settings, not an error. Interpolate the centre instead of reporting a
+        // hole in prepared data.
+        return count == 0 ? elevationAt(latitude, longitude) : sum / count;
     }
 
     private Optional<DemTile> load(DemTileKey key) {

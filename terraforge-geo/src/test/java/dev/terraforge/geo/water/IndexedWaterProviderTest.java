@@ -3,6 +3,7 @@ package dev.terraforge.geo.water;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import dev.terraforge.core.data.ElevationProvider;
+import dev.terraforge.core.data.WaterProvider;
 import dev.terraforge.core.data.WaterProvider.WaterType;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -35,21 +36,53 @@ class IndexedWaterProviderTest {
     }
 
     @Test
-    void reportsSeaLevelOnlyForWater() {
+    void aLakeWithoutASourceElevationHasNoKnownSurface() {
         IndexedWaterProvider provider = new IndexedWaterProvider(List.of(
                 feature(WaterType.LAKE, 0, 0, 1, 1)));
 
-        assertThat(provider.waterSurfaceElevation(0.5, 0.5)).isZero();
-        assertThat(ElevationProvider.isNoData(provider.waterSurfaceElevation(2, 2))).isTrue();
+        // Not sea level: a lake whose altitude the source never stated cannot be placed at all.
+        var column = provider.waterColumnAt(0.5, 0.5, 300.0);
+        assertThat(column.type()).isEqualTo(WaterType.LAKE);
+        assertThat(column.hasKnownSurface()).isFalse();
+        assertThat(provider.waterColumnAt(2, 2, 300.0)).isEqualTo(WaterProvider.WaterColumn.DRY);
+    }
+
+    @Test
+    void aLakeReportsItsOwnAltitudeAndDepth() {
+        IndexedWaterProvider provider = new IndexedWaterProvider(List.of(
+                new IndexedWaterProvider.WaterFeature(WaterType.LAKE, polygon(0, 0, 1, 1), 372.0, 154.0)));
+
+        var column = provider.waterColumnAt(0.5, 0.5, 371.0);
+        assertThat(column.surfaceElevationMeters()).isEqualTo(372.0);
+        assertThat(column.bedDepthMeters()).isEqualTo(154.0);
+    }
+
+    @Test
+    void anOceanIsAtSeaLevelAndARiverFollowsTheTerrain() {
+        IndexedWaterProvider provider = new IndexedWaterProvider(List.of(
+                feature(WaterType.OCEAN, 0, 0, 1, 1),
+                new IndexedWaterProvider.WaterFeature(WaterType.RIVER, polygon(2, 2, 3, 3),
+                        ElevationProvider.NO_DATA, 4.0)));
+
+        assertThat(provider.waterColumnAt(0.5, 0.5, -20.0))
+                .isEqualTo(WaterProvider.WaterColumn.OCEAN);
+        // HydroRIVERS states no absolute level, so the river's surface is the terrain height.
+        assertThat(provider.waterColumnAt(2.5, 2.5, 820.0).surfaceElevationMeters()).isEqualTo(820.0);
     }
 
     private static IndexedWaterProvider.WaterFeature feature(WaterType type, double minLatitude,
                                                               double minLongitude, double maxLatitude,
                                                               double maxLongitude) {
-        return new IndexedWaterProvider.WaterFeature(type, GEOMETRY_FACTORY.createPolygon(new Coordinate[]{
+        return new IndexedWaterProvider.WaterFeature(type,
+                polygon(minLatitude, minLongitude, maxLatitude, maxLongitude));
+    }
+
+    private static org.locationtech.jts.geom.Polygon polygon(double minLatitude, double minLongitude,
+                                                              double maxLatitude, double maxLongitude) {
+        return GEOMETRY_FACTORY.createPolygon(new Coordinate[]{
                 new Coordinate(minLongitude, minLatitude), new Coordinate(maxLongitude, minLatitude),
                 new Coordinate(maxLongitude, maxLatitude), new Coordinate(minLongitude, maxLatitude),
                 new Coordinate(minLongitude, minLatitude)
-        }));
+        });
     }
 }

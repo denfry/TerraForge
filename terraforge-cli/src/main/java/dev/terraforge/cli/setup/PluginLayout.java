@@ -98,7 +98,6 @@ public final class PluginLayout {
                 options.vertical().applyTo(defaults.terrain()),
                 defaults.water(),
                 defaults.biomes(),
-                defaults.vegetation(),
                 defaults.generation(),
                 defaults.pregeneration(),
                 defaults.infrastructure(),

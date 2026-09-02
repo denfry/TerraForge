@@ -4,6 +4,7 @@ import dev.terraforge.core.data.ElevationProvider;
 import dev.terraforge.core.data.LandcoverProvider;
 import dev.terraforge.core.data.LandcoverProvider.LandcoverClass;
 import dev.terraforge.core.data.WaterProvider;
+import dev.terraforge.core.data.WaterProvider.WaterColumn;
 import dev.terraforge.core.data.WaterProvider.WaterType;
 import dev.terraforge.core.terrain.ClimateBiome;
 import dev.terraforge.core.terrain.ClimateBiomeResolver;
@@ -62,7 +63,14 @@ public final class DefaultTerrainPipeline implements TerrainPipeline {
 
     @Override
     public TerrainSample sampleColumn(double latitude, double longitude) {
-        double rawMeters = elevation.elevationAt(latitude, longitude);
+        return sampleColumn(latitude, longitude, 0.0, 0.0);
+    }
+
+    @Override
+    public TerrainSample sampleColumn(double latitude, double longitude,
+                                      double latitudeSpanDegrees, double longitudeSpanDegrees) {
+        double rawMeters = elevation.averageElevationAt(
+                latitude, longitude, latitudeSpanDegrees, longitudeSpanDegrees);
         boolean fallback = ElevationProvider.isNoData(rawMeters);
         double meters = fallback ? fallbackElevation : rawMeters;
 
@@ -70,19 +78,34 @@ public final class DefaultTerrainPipeline implements TerrainPipeline {
         // fallback: a vector water provider (real coastlines, lakes, rivers) does not need a DEM at
         // all and must not be skipped just because the DEM has a hole. Only the elevation-derived
         // fallback provider actually consults the hint, and it already treats NaN as "unknown".
-        WaterType waterType = classifyWater(latitude, longitude, rawMeters);
-        double waterSurfaceMeters = waterSurface(latitude, longitude, rawMeters, waterType);
+        WaterColumn column = water.waterColumnAt(latitude, longitude, rawMeters);
+        WaterType waterType = enabledWaterType(column.type());
+        double waterSurfaceMeters = column.surfaceElevationMeters();
 
-        if (waterType == WaterType.RIVER) {
-            // HydroRIVERS has a centreline and discharge, not bathymetry. The provider gives the
-            // prepared width-derived depth; preserve the DEM height as the water surface and carve
-            // only the shallow channel so the surrounding real valley stays intact.
-            meters -= water.riverBedDepthMeters(latitude, longitude, meters);
+        if (waterType == WaterType.RIVER && ElevationProvider.isNoData(waterSurfaceMeters)) {
+            // A river's surface is the terrain height, and where the DEM has a hole that is the
+            // substituted fallback -- not sea level, and not NaN. The column is already flagged.
+            waterSurfaceMeters = meters;
+        }
+        if (waterType.isWater() && !placeable(waterType, waterSurfaceMeters, rawMeters,
+                column.bedDepthMeters())) {
+            // An unknown or implausible water surface means this water body cannot be placed here.
+            // It must never fall back to sea level: doing so drags the whole column down to y=0,
+            // which is how a previous build deleted 5.5 km of Tibetan plateau and left a sand lake
+            // bed behind. Dry land is the honest answer; the biome still reflects the real climate.
+            waterType = WaterType.NONE;
         }
 
-        // Below the surface of a water body the terrain is the sea or lake bed. Without bathymetry
-        // the DEM stops at the coast, so the configured default depth stands in for it -- and the
-        // column is marked as a fallback, because that depth is a guess, not a measurement.
+        if (waterType == WaterType.RIVER || waterType == WaterType.LAKE) {
+            // HydroRIVERS has a centreline and a discharge, HydroLAKES an average depth: neither is
+            // bathymetry. The bed is carved below the water's own surface, so the surrounding real
+            // valley -- and a mountain lake's real altitude -- stay intact.
+            meters = waterSurfaceMeters - column.bedDepthMeters();
+        }
+
+        // Below the surface of the ocean the terrain is the sea bed. Without bathymetry the DEM
+        // stops at the coast, so the configured default depth stands in for it -- and the column is
+        // marked as a fallback, because that depth is a guess, not a measurement.
         if (waterType == WaterType.OCEAN && !elevation.hasBathymetry()) {
             meters = -defaultOceanDepth;
             fallback = true;
@@ -95,16 +118,20 @@ public final class DefaultTerrainPipeline implements TerrainPipeline {
         int waterSurfaceY = waterType.isWater()
                 ? verticalScale.toBlockY(waterSurfaceMeters)
                 : verticalScale.seaLevel();
-        if (waterType == WaterType.RIVER) {
-            // Rounding at coarse vertical scales must not put the carved bed back level with water.
+        if (waterType.isWater()) {
+            // Water is wet. Rounding at coarse vertical scales otherwise puts the bed back level
+            // with the surface -- a 5 m sea or a shallow river channel is less than one block at
+            // 20 m per block -- and the generator then writes a dry basin where the map says water.
+            // Bounded by this body's own surface, so it can only ever remove the single block the
+            // vertical scale cannot represent, never a mountain: that was the previous build's bug,
+            // and it came from a surface elevation of 0, not from this clamp.
             surfaceY = Math.min(surfaceY, waterSurfaceY - 1);
         }
 
         return new TerrainSample(meters, surfaceY, waterType, waterSurfaceY, cover, biome, fallback);
     }
 
-    private WaterType classifyWater(double latitude, double longitude, double elevationMeters) {
-        WaterType type = water.waterTypeAt(latitude, longitude, elevationMeters);
+    private WaterType enabledWaterType(WaterType type) {
         return switch (type) {
             case OCEAN -> oceansEnabled ? type : WaterType.NONE;
             case LAKE -> lakesEnabled ? type : WaterType.NONE;
@@ -113,16 +140,38 @@ public final class DefaultTerrainPipeline implements TerrainPipeline {
         };
     }
 
-    private double waterSurface(double latitude, double longitude, double elevationMeters,
-                                WaterType waterType) {
-        if (!waterType.isWater()) {
-            return 0.0;
+    /**
+     * Whether a declared water surface can be placed at this column.
+     *
+     * <p>Unknown surface, no water: that is the whole rule for the ocean (whose surface is sea level
+     * by definition) and for a river (whose surface is the terrain height).
+     *
+     * <p>A lake gets one more test, because a lake is the only water body that carries an absolute
+     * altitude from its source and the only one a DEM can contradict. A DEM measures a lake at its
+     * water surface, so on real data the two agree to a few tens of metres; a disagreement of
+     * kilometres means the source's elevation attribute is wrong, or the polygon covers ground that
+     * is not the lake at this resolution. Honouring such a value would carve -- or flood -- the
+     * column by that entire difference, a mountain-sized edit driven by one bad number in a file.
+     */
+    private static boolean placeable(WaterType waterType, double surfaceMeters, double demMeters,
+                                     double bedDepthMeters) {
+        if (ElevationProvider.isNoData(surfaceMeters)) {
+            return false;
         }
-        double surface = water.waterSurfaceElevation(latitude, longitude, elevationMeters);
-        // Lakes sit at their own altitude; where that is unknown, sea level is the only defensible
-        // assumption.
-        return ElevationProvider.isNoData(surface) ? 0.0 : surface;
+        if (waterType != WaterType.LAKE || ElevationProvider.isNoData(demMeters)) {
+            // No DEM to cross-check against; the source's own value is all there is.
+            return true;
+        }
+        return Math.abs(surfaceMeters - demMeters) <= bedDepthMeters + LAKE_SURFACE_AGREEMENT_METERS;
     }
+
+    /**
+     * How far a lake's declared surface may sit from the DEM at the same column before the lake is
+     * rejected. Generous enough for real disagreement between a lake register and a DEM (tens of
+     * metres), and for a block whose footprint straddles a shoreline at a coarse scale; far too
+     * small to let a sea-level default stand in for a Himalayan lake.
+     */
+    private static final double LAKE_SURFACE_AGREEMENT_METERS = 250.0;
 
     @Override
     public ChunkSampler.ChunkSamples sampleChunk(int chunkX, int chunkZ) {

@@ -94,12 +94,54 @@ Big endian throughout. The format is deliberately trivial: loading a tile is an 
 
 ## Sampling
 
-`DemTile.interpolate(lat, lon)` does bilinear interpolation between the four surrounding samples.
-No-data neighbours are excluded from the weighting rather than dragging the result toward the
-sentinel; if all four are missing, the result is no-data and the caller applies its fallback.
+A block is not a point. At `blocks-per-km: 1.0` one block spans ~33 DEM samples, and reading the
+one sample under its centre is point sampling a signal far above the sampling rate: the difference
+between two adjacent samples becomes a block-to-block step in the world, and that step is the
+sampler's, not the Earth's. A block's elevation is therefore the **mean of the samples its
+geographic footprint covers**, not the value at its centre. Measured against point sampling, the
+mean absolute block-to-block height difference fell from 12.75 to 10.71 in the Himalaya and from
+10.66 to 8.83 in the Alps — roughly a fifth of the apparent roughness was invented by the sampler.
 
-At `blocks-per-km: 1.0` one block spans ~33 DEM samples, so interpolation is effectively
-downsampling — expect smoothed terrain. Higher `blocks-per-km` values expose the DEM's real detail.
+`CachingChunkSampler` derives that footprint once per chunk, from the chunk's own geographic bounds
+divided by sixteen, and passes it down as a latitude/longitude span.
+`ElevationProvider.averageElevationAt(lat, lon, latSpan, lonSpan)` then averages every prepared
+sample whose coordinate falls inside the footprint:
+
+- **Bounded at 16 samples per axis.** Larger footprints are strided. Without the cap a coarse
+  `blocks-per-km` would make one column read a quarter of a tile; sixteen samples per axis is
+  already past the point of diminishing returns against arc-second data.
+- **Neighbouring tiles are read.** A footprint is a rounding error next to a one-degree cell, so
+  this is one tile for almost every column and at most four at a tile corner. Each tile returns a
+  sum and a count, which are combined before dividing — a two-sample sliver must not weigh the same
+  as a hundred-sample interior.
+- **The shared tile edge is counted once.** `.tfdem` tiles are edge-inclusive in the `.hgt` style,
+  so a tile owns its north and west edges and leaves its east and south ones to the neighbours that
+  repeat them. Averaging both copies would weight one line of ground twice.
+- **A footprint finer than the DEM grid falls back to interpolating the centre.** At fine
+  `blocks-per-km` a block sits between samples and covers none of them; that is the normal case,
+  not a hole in the data.
+
+Averaging is deterministic — the same footprint always reads the same samples, so identical data
+and configuration still produce identical terrain. It also costs nothing extra in I/O: the samples
+are on the pages the point sample would have touched anyway.
+
+Ad-hoc point queries still point-sample. `/earth whereami` and the CLI ask about a place rather
+than about a block, so `sampleColumn(lat, lon)` with no spans interpolates the exact coordinate.
+
+### Interpolating one point
+
+`DemTile.interpolate(lat, lon)` does bilinear interpolation between the four surrounding samples.
+No-data neighbours are dropped from the weighting rather than dragging the result toward the
+sentinel, so a coastal sample beside a void keeps its own height. A height is reported only when
+**at least half the bilinear weight came from prepared samples**; below that the point has no
+elevation at all and the caller applies its fallback.
+
+The former rule renormalised over whichever corners happened to hold data, which answers a
+different question. A point sitting almost entirely over a void was handed the height of the one
+distant corner that had a sample, and returned it as an elevation indistinguishable from a measured
+one — an invented height, in the exact place where honest "no data" matters most. Half the weight
+is the line: the point is nearer real ground than void, or it has none. Coastal behaviour is
+unchanged, because a point mostly over real data still keeps its own height.
 
 ## Missing tiles
 

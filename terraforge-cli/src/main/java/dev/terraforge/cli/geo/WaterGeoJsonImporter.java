@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.sql.Types;
 import java.util.List;
 import java.util.Locale;
 import org.locationtech.jts.geom.Coordinate;
@@ -63,8 +64,9 @@ public final class WaterGeoJsonImporter {
         int recognised = 0;
         try (PreparedStatement insert = connection.prepareStatement("""
                 INSERT INTO water_bodies
-                    (name, water_type, min_lat, min_lon, max_lat, max_lon, river_bed_depth_m, discharge_cms, geometry)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (name, water_type, min_lat, min_lon, max_lat, max_lon, bed_depth_m,
+                     surface_elevation_m, discharge_cms, geometry)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """)) {
             for (JsonNode feature : features) {
                 JsonNode properties = feature.path("properties");
@@ -123,16 +125,23 @@ public final class WaterGeoJsonImporter {
                     continue;
                 }
                 Envelope bounds = geometry.getEnvelopeInternal();
-                insert.setString(1, textOrNull(feature.path("properties").path("name")));
+                insert.setString(1, textOrNull(properties.path("name")));
                 insert.setString(2, type.name());
                 insert.setDouble(3, bounds.getMinY());
                 insert.setDouble(4, bounds.getMinX());
                 insert.setDouble(5, bounds.getMaxY());
                 insert.setDouble(6, bounds.getMaxX());
-                double depth = type == WaterType.RIVER ? RiverWidth.bedDepthMetres(riverWidth(properties, blocksPerKm)) : 0.0;
-                insert.setDouble(7, depth);
-                insert.setDouble(8, type == WaterType.RIVER ? dischargeCubicMetresPerSecond(properties) : 0.0);
-                insert.setBytes(9, new WKBWriter().write(geometry));
+                insert.setDouble(7, bedDepthMetres(properties, type, blocksPerKm));
+                double surface = surfaceElevationMetres(properties, type);
+                // NULL, not 0: a lake whose altitude the source never stated must not be recorded
+                // as sitting at sea level. The runtime declines to place water it cannot locate.
+                if (Double.isNaN(surface)) {
+                    insert.setNull(8, Types.REAL);
+                } else {
+                    insert.setDouble(8, surface);
+                }
+                insert.setDouble(9, type == WaterType.RIVER ? dischargeCubicMetresPerSecond(properties) : 0.0);
+                insert.setBytes(10, new WKBWriter().write(geometry));
                 insert.executeUpdate();
                 imported++;
             }
@@ -219,6 +228,52 @@ public final class WaterGeoJsonImporter {
 
     private static double dischargeCubicMetresPerSecond(JsonNode properties) {
         return properties.path("DIS_AV_CMS").asDouble(properties.path("dis_av_cms").asDouble(0.0));
+    }
+
+    /**
+     * Absolute water-surface elevation in metres, or NaN when the source does not state one.
+     *
+     * <p>HydroLAKES ships it as {@code Elevation}; TerraForge's strict schema calls it
+     * {@code surface_elevation_m}. The ocean is sea level by definition. A river never carries one
+     * -- HydroRIVERS is a centreline network, and a river's surface is the terrain it runs through,
+     * which only the generator knows. Anything else stays NaN and reaches the database as NULL,
+     * because "we do not know where this lake is" is information the runtime needs.
+     */
+    private static double surfaceElevationMetres(JsonNode properties, WaterType type) {
+        return switch (type) {
+            case OCEAN -> 0.0;
+            case LAKE -> number(properties, "surface_elevation_m", "Elevation", "elevation", "ELEVATION");
+            case RIVER, NONE -> Double.NaN;
+        };
+    }
+
+    /**
+     * Depth of the bed below the water surface, in metres, 0 when unknown.
+     *
+     * <p>Rivers get the width-derived channel depth; lakes get HydroLAKES' {@code Depth_avg}. Oceans
+     * get nothing: their floor is the DEM's bathymetry, or the configured default depth.
+     */
+    private static double bedDepthMetres(JsonNode properties, WaterType type, double blocksPerKm) {
+        double depth = switch (type) {
+            case RIVER -> RiverWidth.bedDepthMetres(riverWidth(properties, blocksPerKm));
+            case LAKE -> number(properties, "bed_depth_m", "Depth_avg", "depth_avg", "DEPTH_AVG");
+            case OCEAN, NONE -> 0.0;
+        };
+        return Double.isFinite(depth) && depth > 0.0 ? depth : 0.0;
+    }
+
+    /** First of the given properties that holds a finite number, or NaN. */
+    private static double number(JsonNode properties, String... names) {
+        for (String name : names) {
+            JsonNode node = properties.path(name);
+            if (node.isNumber() || (node.isTextual() && !node.asText().isBlank())) {
+                double value = node.asDouble(Double.NaN);
+                if (Double.isFinite(value)) {
+                    return value;
+                }
+            }
+        }
+        return Double.NaN;
     }
 
     private static Geometry readLineGeometry(JsonNode node) throws IOException {

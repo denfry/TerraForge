@@ -80,7 +80,14 @@ CREATE TABLE IF NOT EXISTS water_bodies (
     min_lon     REAL    NOT NULL,
     max_lat     REAL    NOT NULL,
     max_lon     REAL    NOT NULL,
-    river_bed_depth_m REAL NOT NULL DEFAULT 0,
+    -- Depth of the bed below the water surface, for sources that ship a depth rather than
+    -- bathymetry: HydroRIVERS width-derived channel depth, HydroLAKES Depth_avg. 0 when unknown.
+    bed_depth_m REAL NOT NULL DEFAULT 0,
+    -- Absolute water-surface elevation in metres above sea level. NULL means the source did not
+    -- ship one, and the runtime then declines to place the water body at all -- a lake whose
+    -- altitude is unknown must never be assumed to sit at sea level, which would drag a mountain
+    -- column down to y=0. HydroLAKES ships this as Elevation. Oceans store 0.
+    surface_elevation_m REAL,
     -- HydroRIVERS DIS_AV_CMS (m^3/s), 0 when the source line carried no discharge estimate. Read-only
     -- rows never lose data at this stage -- the runtime decides visibility from this column instead.
     discharge_cms REAL NOT NULL DEFAULT 0,

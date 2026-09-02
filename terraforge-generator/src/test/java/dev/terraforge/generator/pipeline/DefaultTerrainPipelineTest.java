@@ -80,6 +80,35 @@ class DefaultTerrainPipelineTest {
     }
 
     @Test
+    void aDeepOceanIsStillOceanEvenThoughItsFloorIsKilometresFromItsSurface() {
+        // The ocean's surface is sea level by definition, so it is never cross-checked against the
+        // sea floor. Applying the lake's plausibility test here would turn every abyssal column into
+        // dry land.
+        DefaultTerrainPipeline pipeline = withWater(bathymetry(-4000.0),
+                water(WaterType.OCEAN, 0.0, 0.0));
+
+        TerrainSample sample = pipeline.sampleColumn(0.0, -30.0);
+
+        assertThat(sample.waterType()).isEqualTo(WaterType.OCEAN);
+        assertThat(sample.elevationMeters()).isEqualTo(-4000.0);
+        assertThat(sample.waterSurfaceY()).isEqualTo(SCALE.seaLevel());
+        assertThat(sample.isUnderwater()).isTrue();
+    }
+
+    @Test
+    void aSeaTooShallowToRepresentIsStillWetRatherThanADryBasin() {
+        // Half a metre of real bathymetry rounds to the same block as the surface. Writing the bed
+        // there leaves a dry seabed where the map says ocean; the bed drops one block instead.
+        DefaultTerrainPipeline pipeline = withWater(bathymetry(-0.5), water(WaterType.OCEAN, 0.0, 0.0));
+
+        TerrainSample sample = pipeline.sampleColumn(0.0, -30.0);
+
+        assertThat(sample.waterType()).isEqualTo(WaterType.OCEAN);
+        assertThat(sample.surfaceY()).isEqualTo(SCALE.seaLevel() - 1);
+        assertThat(sample.isUnderwater()).isTrue();
+    }
+
+    @Test
     void samplingIsDeterministic() {
         DefaultTerrainPipeline pipeline = pipeline((lat, lon) -> lat * 10.0 + lon);
 
@@ -147,20 +176,77 @@ class DefaultTerrainPipelineTest {
 
     @Test
     void riverWaterSitsAboveItsWidthDerivedBed() {
-        WaterProvider river = new WaterProvider() {
-            @Override public WaterType waterTypeAt(double latitude, double longitude) { return WaterType.RIVER; }
-            @Override public double waterSurfaceElevation(double latitude, double longitude) { return 0.0; }
-            @Override public double waterSurfaceElevation(double latitude, double longitude, double elevation) { return elevation; }
-            @Override public double riverBedDepthMeters(double latitude, double longitude, double elevation) { return 4.0; }
-        };
-        DefaultTerrainPipeline pipeline = DefaultTerrainPipeline.builder().elevation(constant(100.0))
-                .water(river).verticalScale(SCALE).chunkSampler(DefaultTerrainPipelineTest::sampler).build();
+        DefaultTerrainPipeline pipeline = withWater(constant(100.0),
+                water(WaterType.RIVER, ElevationProvider.NO_DATA, 4.0));
 
         TerrainSample sample = pipeline.sampleColumn(50.0, 8.0);
 
         assertThat(sample.waterType()).isEqualTo(WaterType.RIVER);
         assertThat(sample.waterSurfaceY()).isEqualTo(163);
         assertThat(sample.surfaceY()).isLessThan(sample.waterSurfaceY());
+    }
+
+    @Test
+    void aMountainLakeSitsAtItsOwnAltitudeAndHoldsWater() {
+        // Lake Geneva: the DEM reads the water surface, HydroLAKES states it, and the bed is carved
+        // below it -- so the lake is 372 m up, not at sea level, and it is not dry either.
+        DefaultTerrainPipeline pipeline = withWater(constant(372.0),
+                water(WaterType.LAKE, 372.0, 40.0));
+
+        TerrainSample sample = pipeline.sampleColumn(46.45, 6.5);
+
+        assertThat(sample.waterType()).isEqualTo(WaterType.LAKE);
+        assertThat(sample.waterSurfaceY()).isEqualTo(SCALE.toBlockY(372.0));
+        assertThat(sample.surfaceY()).isEqualTo(SCALE.toBlockY(332.0));
+        assertThat(sample.isUnderwater()).isTrue();
+    }
+
+    @Test
+    void aLakeWithNoKnownSurfaceStaysDryLandInsteadOfCollapsingToSeaLevel() {
+        // The catastrophe this guards: a 5,440 m Tibetan column told "the lake surface is unknown"
+        // must keep its mountain. Substituting sea level removed 277 blocks of terrain and left a
+        // one-block pond at y=0 behind.
+        DefaultTerrainPipeline pipeline = withWater(constant(5440.0),
+                water(WaterType.LAKE, ElevationProvider.NO_DATA, 0.0));
+
+        TerrainSample sample = pipeline.sampleColumn(30.49, 84.07);
+
+        assertThat(sample.waterType()).isEqualTo(WaterType.NONE);
+        assertThat(sample.elevationMeters()).isEqualTo(5440.0);
+        assertThat(sample.surfaceY()).isEqualTo(SCALE.toBlockY(5440.0));
+    }
+
+    @Test
+    void aLakeSurfaceKilometresFromTheTerrainIsRejectedAsBadData() {
+        // Same column, but now the source insists the lake is at sea level. Believing it would carve
+        // 5.4 km off the plateau; the DEM is the cross-check that says the attribute is wrong.
+        DefaultTerrainPipeline pipeline = withWater(constant(5440.0), water(WaterType.LAKE, 0.0, 0.0));
+
+        TerrainSample sample = pipeline.sampleColumn(30.49, 84.07);
+
+        assertThat(sample.waterType()).isEqualTo(WaterType.NONE);
+        assertThat(sample.surfaceY()).isEqualTo(SCALE.toBlockY(5440.0));
+    }
+
+    @Test
+    void aBlocksElevationIsTheMeanOverItsFootprintNotItsCentre() {
+        // A one-block-per-km world: the centre sample is a spike, the footprint is not. Sampling the
+        // centre would report 1000 m of relief that the ground does not have.
+        ElevationProvider spiky = new ElevationProvider() {
+            @Override public double elevationAt(double latitude, double longitude) { return 1000.0; }
+            @Override public double averageElevationAt(double latitude, double longitude,
+                                                       double latitudeSpanDegrees, double longitudeSpanDegrees) {
+                return latitudeSpanDegrees > 0.0 ? 100.0 : elevationAt(latitude, longitude);
+            }
+            @Override public boolean hasCoverage(double latitude, double longitude) { return true; }
+            @Override public GeoBounds coverage() { return GeoBounds.world(); }
+            @Override public boolean hasBathymetry() { return false; }
+        };
+        DefaultTerrainPipeline pipeline = DefaultTerrainPipeline.builder().elevation(spiky)
+                .verticalScale(SCALE).chunkSampler(DefaultTerrainPipelineTest::sampler).build();
+
+        assertThat(pipeline.sampleColumn(50.0, 8.0).elevationMeters()).isEqualTo(1000.0);
+        assertThat(pipeline.sampleChunk(0, 0).at(8, 8).elevationMeters()).isEqualTo(100.0);
     }
 
     // --- fixtures -----------------------------------------------------------
@@ -176,6 +262,40 @@ class DefaultTerrainPipelineTest {
 
     private static ElevationProvider constant(double meters) {
         return new FakeElevation((lat, lon) -> meters);
+    }
+
+    /** A DEM with real depths merged in, so the water stage trusts the sampled sea floor. */
+    private static ElevationProvider bathymetry(double metres) {
+        return new ElevationProvider() {
+            @Override public double elevationAt(double latitude, double longitude) { return metres; }
+            @Override public boolean hasCoverage(double latitude, double longitude) { return true; }
+            @Override public GeoBounds coverage() { return GeoBounds.world(); }
+            @Override public boolean hasBathymetry() { return true; }
+        };
+    }
+
+    /** A pipeline over a fixed elevation and a fixed water answer. */
+    private static DefaultTerrainPipeline withWater(ElevationProvider elevation, WaterProvider water) {
+        return DefaultTerrainPipeline.builder().elevation(elevation).water(water)
+                .verticalScale(SCALE).chunkSampler(DefaultTerrainPipelineTest::sampler).build();
+    }
+
+    /** One water answer everywhere, as a prepared vector source would report it. */
+    private static WaterProvider water(WaterType type, double surfaceMetres, double bedDepthMetres) {
+        return new WaterProvider() {
+            @Override
+            public WaterType waterTypeAt(double latitude, double longitude) {
+                return type;
+            }
+
+            @Override
+            public WaterColumn waterColumnAt(double latitude, double longitude, double knownElevationMeters) {
+                // A river takes the terrain height, exactly as the prepared providers do.
+                double surface = type == WaterType.RIVER && ElevationProvider.isNoData(surfaceMetres)
+                        ? knownElevationMeters : surfaceMetres;
+                return new WaterColumn(type, surface, bedDepthMetres);
+            }
+        };
     }
 
     private static CachingChunkSampler sampler(TerrainPipeline pipeline) {
