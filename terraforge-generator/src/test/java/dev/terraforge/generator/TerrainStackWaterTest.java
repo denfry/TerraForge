@@ -82,7 +82,7 @@ class TerrainStackWaterTest {
         // The bug the audit named: generation.caves reached shouldGenerateCaves(), so the flag
         // documented as "TerraForge's karst caves" enabled vanilla's carvers instead.
         TerraForgeConfig withKarstCaves = withGeneration(new TerraForgeConfig.GenerationSection(
-                true, true, false, false, false, 4));
+                true, true, false, false, false, 4, null));
 
         assertThat(generator(withKarstCaves).shouldGenerateCaves()).isFalse();
         assertThat(TerraForgeChunkGenerator.Features.from(withKarstCaves.generation()).karstCaves()).isTrue();

@@ -65,6 +65,10 @@ public final class ClimateBiomeResolver {
         }
         double absLatitude = Math.abs(latitude);
 
+        // The Antarctic ice sheet is ice sheet to the water's edge: no shore, no tundra, no rock.
+        if (Antarctica.isIceSheet(latitude)) {
+            return ClimateBiome.GLACIER;
+        }
         if (landcover == LandcoverClass.SNOW_ICE) {
             return ClimateBiome.GLACIER;
         }

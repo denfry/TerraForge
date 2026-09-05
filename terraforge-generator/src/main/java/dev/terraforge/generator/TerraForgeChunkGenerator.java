@@ -8,6 +8,9 @@ import dev.terraforge.generator.biome.BiomeMapper;
 import dev.terraforge.generator.pipeline.ChunkSampler;
 import dev.terraforge.generator.pipeline.TerrainPipeline;
 import dev.terraforge.generator.surface.SurfacePalette;
+import dev.terraforge.generator.vegetation.VegetationPlan;
+import dev.terraforge.generator.vegetation.VegetationPopulator;
+import java.util.List;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.bukkit.HeightMap;
@@ -15,6 +18,7 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.generator.BiomeProvider;
+import org.bukkit.generator.BlockPopulator;
 import org.bukkit.generator.ChunkGenerator;
 import org.bukkit.generator.WorldInfo;
 
@@ -161,7 +165,8 @@ public final class TerraForgeChunkGenerator extends ChunkGenerator {
             for (int localX = 0; localX < ChunkSampler.ChunkSamples.SIZE; localX++) {
                 TerrainSample sample = samples.at(localX, localZ);
                 int surfaceY = Math.clamp(sample.surfaceY(), floor, ceiling);
-                SurfacePalette.Layers layers = SurfacePalette.forBiome(sample.biome());
+                SurfacePalette.Layers layers = SurfacePalette.forColumn(sample.biome(),
+                        (chunkX << 4) + localX, (chunkZ << 4) + localZ);
 
                 chunk.setBlock(localX, surfaceY, localZ, layers.top());
                 int fillerBottom = Math.max(floor, surfaceY - SurfacePalette.FILLER_DEPTH);
@@ -270,6 +275,21 @@ public final class TerraForgeChunkGenerator extends ChunkGenerator {
         return features.vanillaDecorations();
     }
 
+    /**
+     * TerraForge's own vegetation, placed from real land cover in this world's vertical frame.
+     *
+     * <p>A populator and not vanilla's decoration pass, so the forests come without the ore veins,
+     * lava lakes and springs that {@code vanilla-decorations} would bring into a scaled world.
+     */
+    @Override
+    public List<BlockPopulator> getDefaultPopulators(World world) {
+        if (!features.vegetation()) {
+            return List.of();
+        }
+        return List.of(new VegetationPopulator(pipeline, new VegetationPlan(features.vegetationDensity(),
+                features.customTrees(), features.farmland())));
+    }
+
     @Override
     public boolean shouldGenerateMobs() {
         return true; // a living planet
@@ -301,12 +321,24 @@ public final class TerraForgeChunkGenerator extends ChunkGenerator {
      * @param karstCaves         run {@link KarstCaveCarver} ({@code generation.caves})
      * @param vanillaCaves       also run vanilla's carvers and aquifer ({@code generation.vanilla-caves})
      * @param vanillaDecorations run vanilla's whole decoration pass ({@code generation.vanilla-decorations})
+     * @param vegetation         run TerraForge's own vegetation populator ({@code generation.vegetation.enabled})
+     * @param vegetationDensity  multiplier on its placement probabilities ({@code generation.vegetation.density})
+     * @param customTrees        draw TerraForge's procedural trees ({@code generation.vegetation.custom-trees})
+     * @param farmland           till flat cropland into fields ({@code generation.vegetation.farmland})
      */
-    public record Features(boolean karstCaves, boolean vanillaCaves, boolean vanillaDecorations) {
+    public record Features(boolean karstCaves, boolean vanillaCaves, boolean vanillaDecorations,
+                           boolean vegetation, double vegetationDensity, boolean customTrees, boolean farmland) {
+
+        /** The three vanilla-frame switches only; no TerraForge vegetation. */
+        public Features(boolean karstCaves, boolean vanillaCaves, boolean vanillaDecorations) {
+            this(karstCaves, vanillaCaves, vanillaDecorations, false, 1.0, false, false);
+        }
 
         public static Features from(dev.terraforge.core.config.TerraForgeConfig.GenerationSection generation) {
+            var vegetation = generation.vegetation();
             return new Features(generation.caves(), generation.vanillaCaves(),
-                    generation.vanillaDecorations());
+                    generation.vanillaDecorations(), vegetation.enabled(), vegetation.density(),
+                    vegetation.customTrees(), vegetation.farmland());
         }
     }
 }

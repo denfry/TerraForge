@@ -38,7 +38,7 @@ public record VerticalProfile(int seaLevel, int minY, int maxY, double metersPer
     public int chunkSections() { return height() / 16; }
     public boolean needsDatapack() { return minY != -64 || maxY != 320; }
     public TerraForgeConfig.TerrainSection applyTo(TerraForgeConfig.TerrainSection defaults) {
-        return new TerraForgeConfig.TerrainSection(seaLevel, minY, maxY, defaults.verticalExaggeration(), metersPerBlock, defaults.fallbackElevation(), defaults.bedrockThickness());
+        return new TerraForgeConfig.TerrainSection(seaLevel, minY, maxY, defaults.verticalExaggeration(), metersPerBlock, defaults.fallbackElevation(), defaults.bedrockThickness(), defaults.smoothing());
     }
     /**
      * SHA-256 over the exact values that determine a managed world's height, used as the config

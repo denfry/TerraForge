@@ -22,7 +22,8 @@ class ClimateBiomeResolverTest {
 
     @Test
     void climateIsSymmetricAboutTheEquator() {
-        for (double latitude : new double[] {5.0, 30.0, 48.0, 62.0, 70.0}) {
+        // Up to 60 degrees; beyond it the south is the Antarctic ice sheet, see AntarcticaTest.
+        for (double latitude : new double[] {5.0, 30.0, 48.0, 58.0}) {
             assertThat(land(-latitude, 100.0, LandcoverClass.TREE_COVER))
                     .isEqualTo(land(latitude, 100.0, LandcoverClass.TREE_COVER));
         }

@@ -6,10 +6,12 @@ import dev.terraforge.core.data.LandcoverProvider.LandcoverClass;
 import dev.terraforge.core.data.WaterProvider;
 import dev.terraforge.core.data.WaterProvider.WaterColumn;
 import dev.terraforge.core.data.WaterProvider.WaterType;
+import dev.terraforge.core.terrain.Antarctica;
 import dev.terraforge.core.terrain.ClimateBiome;
 import dev.terraforge.core.terrain.ClimateBiomeResolver;
 import dev.terraforge.core.terrain.TerrainSample;
 import dev.terraforge.core.terrain.VerticalScale;
+import dev.terraforge.generator.noise.CellNoise;
 
 /**
  * Resolves one column of terrain from prepared geodata.
@@ -35,6 +37,12 @@ public final class DefaultTerrainPipeline implements TerrainPipeline {
 
     private final double fallbackElevation;
     private final double defaultOceanDepth;
+    private final int minLakeDepthBlocks;
+    private final int minRiverDepthBlocks;
+    private final int minOceanDepthBlocks;
+    /** Lattice spacing, in columns, of the bed-depth noise: a basin every dozen blocks or so. */
+    private static final int DEPTH_NOISE_CELL = 12;
+    private static final long DEPTH_NOISE_SALT = 0xBED0DE9700000001L;
     private final boolean oceansEnabled;
     private final boolean lakesEnabled;
     private final boolean riversEnabled;
@@ -47,6 +55,9 @@ public final class DefaultTerrainPipeline implements TerrainPipeline {
         this.verticalScale = builder.verticalScale;
         this.fallbackElevation = builder.fallbackElevation;
         this.defaultOceanDepth = builder.defaultOceanDepth;
+        this.minLakeDepthBlocks = builder.minLakeDepthBlocks;
+        this.minRiverDepthBlocks = builder.minRiverDepthBlocks;
+        this.minOceanDepthBlocks = builder.minOceanDepthBlocks;
         this.oceansEnabled = builder.oceansEnabled;
         this.lakesEnabled = builder.lakesEnabled;
         this.riversEnabled = builder.riversEnabled;
@@ -111,6 +122,12 @@ public final class DefaultTerrainPipeline implements TerrainPipeline {
             fallback = true;
         }
 
+        // The Antarctic ice sheet is drawn as a low, gentle dome rather than the kilometre-high
+        // plateau the DEM would give at a vertically exaggerated scale. See Antarctica.
+        if (!waterType.isWater() && Antarctica.isIceSheet(latitude)) {
+            meters = Antarctica.flatten(meters);
+        }
+
         LandcoverClass cover = landcover.landcoverAt(latitude, longitude);
         ClimateBiome biome = biomeResolver.resolve(latitude, meters, waterType, cover);
 
@@ -126,9 +143,41 @@ public final class DefaultTerrainPipeline implements TerrainPipeline {
             // vertical scale cannot represent, never a mountain: that was the previous build's bug,
             // and it came from a surface elevation of 0, not from this clamp.
             surfaceY = Math.min(surfaceY, waterSurfaceY - 1);
+            // And it is deep enough to see. A real depth of a few metres rounds to nothing at a
+            // coarse vertical scale, which left every lake one block deep over a flat floor. The
+            // floor is a configured minimum per water type; a smooth, seedless noise over the
+            // column grid deepens it by up to that much again, so beds are basins, not slabs.
+            // Real bathymetry deeper than the floor is untouched: this only ever lowers the bed.
+            int floor = minimumDepthBlocks(waterType);
+            int extra = depthVariation(latitude, longitude, latitudeSpanDegrees, longitudeSpanDegrees, floor);
+            surfaceY = Math.min(surfaceY, waterSurfaceY - floor - extra);
         }
 
         return new TerrainSample(meters, surfaceY, waterType, waterSurfaceY, cover, biome, fallback);
+    }
+
+    private int minimumDepthBlocks(WaterType type) {
+        return switch (type) {
+            case LAKE -> minLakeDepthBlocks;
+            case RIVER -> minRiverDepthBlocks;
+            case OCEAN -> minOceanDepthBlocks;
+            case NONE -> 0;
+        };
+    }
+
+    /**
+     * Extra bed depth in {@code [0, floor]} from smooth noise over the column grid. The grid is the
+     * footprint the sampler passes in; a direct call with no footprint gets no variation.
+     */
+    static int depthVariation(double latitude, double longitude, double latitudeSpan, double longitudeSpan,
+                              int floor) {
+        if (floor <= 0 || latitudeSpan <= 0.0 || longitudeSpan <= 0.0) {
+            return 0;
+        }
+        int row = (int) Math.floor(latitude / latitudeSpan);
+        int col = (int) Math.floor(longitude / longitudeSpan);
+        double noise = CellNoise.smooth(col, row, DEPTH_NOISE_CELL, DEPTH_NOISE_SALT);
+        return (int) Math.round(noise * floor);
     }
 
     private WaterType enabledWaterType(WaterType type) {
@@ -197,6 +246,9 @@ public final class DefaultTerrainPipeline implements TerrainPipeline {
 
         private double fallbackElevation;
         private double defaultOceanDepth = 30.0;
+        private int minLakeDepthBlocks = 1;
+        private int minRiverDepthBlocks = 1;
+        private int minOceanDepthBlocks = 1;
         private boolean oceansEnabled = true;
         private boolean lakesEnabled = true;
         private boolean riversEnabled = true;
@@ -239,6 +291,17 @@ public final class DefaultTerrainPipeline implements TerrainPipeline {
 
         public Builder defaultOceanDepth(double meters) {
             this.defaultOceanDepth = meters;
+            return this;
+        }
+
+        /** Depth floors in blocks per water type; each at least 1. Default 1: no floor beyond wet. */
+        public Builder minimumDepthBlocks(int lake, int river, int ocean) {
+            if (lake < 1 || river < 1 || ocean < 1) {
+                throw new IllegalArgumentException("minimum depths must be at least 1 block");
+            }
+            this.minLakeDepthBlocks = lake;
+            this.minRiverDepthBlocks = river;
+            this.minOceanDepthBlocks = ocean;
             return this;
         }
 

@@ -79,10 +79,13 @@ public final class TerrainStack {
                 .verticalScale(verticalScale)
                 .fallbackElevation(config.terrain().fallbackElevation())
                 .defaultOceanDepth(config.water().defaultOceanDepth())
+                .minimumDepthBlocks(config.water().minLakeDepthBlocks(), config.water().minRiverDepthBlocks(),
+                        config.water().minOceanDepthBlocks())
                 .waterFeatures(config.water().oceans(), config.water().lakes(), config.water().rivers())
                 .chunkSampler(builtPipeline -> {
                     var sampler = new CachingChunkSampler(builtPipeline, transformer, cacheManager,
-                            config.cache().chunkCacheEntries());
+                            config.cache().chunkCacheEntries(), config.terrain().smoothing(),
+                        config.water().shoreBlendBlocks());
                     samplerHolder.set(sampler);
                     return sampler;
                 })

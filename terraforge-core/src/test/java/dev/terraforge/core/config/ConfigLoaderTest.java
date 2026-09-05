@@ -68,7 +68,7 @@ class ConfigLoaderTest {
         TerraForgeConfig defaults = TerraForgeConfig.defaults();
         TerraForgeConfig broken = new TerraForgeConfig(
                 defaults.world(), defaults.scale(), defaults.earth(),
-                new TerraForgeConfig.TerrainSection(63, 320, -64, 1.0, 1.0, 0.0, 8),
+                new TerraForgeConfig.TerrainSection(63, 320, -64, 1.0, 1.0, 0.0, 8, 3.0),
                 defaults.water(), defaults.biomes(), defaults.generation(), defaults.pregeneration(),
                 defaults.infrastructure(), defaults.data(), defaults.cache(), defaults.towny(),
                 defaults.bluemap(), defaults.debug(), defaults.testRegion());
@@ -128,6 +128,31 @@ class ConfigLoaderTest {
         assertThatThrownBy(() -> loader.validate(broken))
                 .isInstanceOf(ConfigLoader.ConfigException.class)
                 .hasMessageContaining("data.database-file must be set");
+    }
+
+    @Test
+    @DisplayName("vegetation features default on when a config predates them")
+    void vegetationFeaturesDefaultOn() throws IOException {
+        String yaml = """
+                generation:
+                  vegetation:
+                    enabled: true
+                    density: 0.5
+                """;
+        TerraForgeConfig config = loader.read(new java.io.ByteArrayInputStream(yaml.getBytes()));
+        assertThat(config.generation().vegetation().density()).isEqualTo(0.5);
+        assertThat(config.generation().vegetation().customTrees()).isTrue();
+        assertThat(config.generation().vegetation().farmland()).isTrue();
+
+        String off = """
+                generation:
+                  vegetation:
+                    custom-trees: false
+                    farmland: false
+                """;
+        TerraForgeConfig disabled = loader.read(new java.io.ByteArrayInputStream(off.getBytes()));
+        assertThat(disabled.generation().vegetation().customTrees()).isFalse();
+        assertThat(disabled.generation().vegetation().farmland()).isFalse();
     }
 
     @Test

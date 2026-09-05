@@ -71,9 +71,10 @@ class AuditedColumnsTest {
 
         assertThat(column.highestNonAir()).isEqualTo(272);
         assertThat(column.at(272)).isEqualTo(Material.WATER);
-        // 60 m of average depth is three blocks here, so the bed is rock five kilometres up.
-        assertThat(column.count(Material.WATER)).isEqualTo(3);
-        assertThat(column.at(269)).isNotEqualTo(Material.WATER);
+        // 60 m of average depth is three blocks here, the default lake floor; the bed noise may
+        // deepen that to six. Either way the bed is rock five kilometres up.
+        assertThat(column.count(Material.WATER)).isBetween(3L, 6L);
+        assertThat(column.at(266)).isNotEqualTo(Material.WATER);
     }
 
     @Test

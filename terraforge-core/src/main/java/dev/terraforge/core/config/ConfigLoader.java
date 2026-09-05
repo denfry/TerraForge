@@ -73,9 +73,19 @@ public final class ConfigLoader {
         require(terrain.verticalExaggeration() > 0.0, "terrain.vertical-exaggeration must be greater than 0");
         require(terrain.metersPerBlock() > 0.0, "terrain.meters-per-block must be greater than 0");
         require(terrain.bedrockThickness() >= 0, "terrain.bedrock-thickness must not be negative");
+        require(terrain.smoothing() >= 1.0 && Double.isFinite(terrain.smoothing()),
+                "terrain.smoothing must be at least 1.0 (1.0 averages only the block's own ground)");
 
+        require(config.water().minLakeDepthBlocks() >= 1 && config.water().minRiverDepthBlocks() >= 1
+                        && config.water().minOceanDepthBlocks() >= 1,
+                "water.min-*-depth-blocks must be at least 1");
+        require(config.water().shoreBlendBlocks() >= 0 && config.water().shoreBlendBlocks() <= 16,
+                "water.shore-blend-blocks must be between 0 and 16");
         require(config.generation() != null, "generation section must be present");
         require(config.generation().workerThreads() >= 1, "generation.worker-threads must be at least 1");
+        require(config.generation().vegetation().density() >= 0.0
+                        && Double.isFinite(config.generation().vegetation().density()),
+                "generation.vegetation.density must not be negative");
 
         TerraForgeConfig.PregenerationSection pregeneration = config.pregeneration();
         require(pregeneration != null, "pregeneration section must be present");

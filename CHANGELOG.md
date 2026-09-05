@@ -27,6 +27,51 @@ not optional:
 
 ### Added
 
+- Vegetation that reads its surroundings. River and lake banks grow sugar cane, willows, tall grass,
+  large ferns, orchids and firefly bushes; oases in the desert grow palms and reeds; warm beaches
+  grow palms. Grassland is meadow with flower drifts of one species per patch, sunflower fields and
+  bushes; temperate forest has birch and cherry groves, lilac, peony, rose bushes, leaf litter and
+  mushrooms; rainforest has bamboo groves, moss carpets, dripleaf, melons and torchflowers; the
+  taiga sweet berries, large ferns and fallen logs; the savanna dry grass, baobabs and shrubs; the
+  steppe dead trees and cypresses; the desert flowering cacti and dry grass.
+- `generation.vegetation.custom-trees` (default `true`): eight procedural trees drawn block by
+  block with persistent leaves -- willow, palm, baobab, tall pine, cypress, dead tree, fallen log
+  and shrub -- bounded to seven blocks' reach and twenty-four in height so they always fit the
+  populator's buffer, and skipped whole rather than cut at its edge.
+- `generation.vegetation.farmland` (default `true`): flat cropland becomes tilled fields, one crop
+  per sixteen-block plot -- wheat, potatoes, carrots, beetroot, pumpkin patches, melons in warm
+  climates -- at one ripeness, with an irrigation channel every eighth row and one plot in eight
+  lying fallow. Sloping cropland stays meadow.
+- Vegetation under water: lily pads and seagrass on lakes and rivers, kelp forests in temperate
+  seas, coral reefs and sea pickles in warm shallows. The frozen ocean and the abyss stay bare.
+- `water.min-lake-depth-blocks` (`3`), `water.min-river-depth-blocks` (`2`) and
+  `water.min-ocean-depth-blocks` (`6`): depth floors, because at 20 m per block a 6 m lake and the
+  30 m default ocean rounded to one block of water over a flat floor. Beds vary smoothly between
+  the floor and twice it, so lakes are basins rather than slabs; real bathymetry deeper than the
+  floor is untouched. **Changes column heights under water**: regenerate, do not mix.
+- `water.shore-blend-blocks` (`4`): banks slope into the water at no more than one block per block
+  and beds shelve out one block per block from the shore, so a lake is a basin with sloping banks
+  rather than a slab of water at the bottom of a sheer-walled pit. Each chunk samples a margin that
+  wide around itself, so the shaping is identical on both sides of a chunk border. `0` disables it.
+  **Changes column heights near water**: regenerate, do not mix.
+- The sea bed is a mix rather than gravel: sand 35 %, gravel 25 %, bone blocks 20 %, clay 15 %,
+  obsidian 5 %, in five-block patches from a seedless hash so every server draws the same floor.
+- The Antarctic ice sheet. South of 60° S the DEM's 2–4 km ice dome, which the vertical scale turned
+  into a cliff-edged plateau of packed ice, is compressed onto a low dome (40 m at the coast, 3 % of
+  the real relief inland) and every land column there is `GLACIER`: snow, with packed ice on a tenth
+  of the surface. **Changes column heights south of 60° S**: regenerate, do not mix.
+- `terrain.smoothing` (default `3.0`): the width, in blocks, of the ground each column's elevation
+  is averaged over. At one block per kilometre and 20 m per block the world is exaggerated fifty
+  to one, so every 2 % slope became a one-block step on every block and the plains read as noise.
+  Widening each column's DEM footprint to a 3×3-block window is a deterministic box filter over the
+  height field: seamless across chunk borders, no extra I/O, and it halves the block-to-block step.
+  `1.0` restores the previous behaviour. **Changes column heights**: regenerate, do not mix.
+- `generation.vegetation` (`enabled`, default `true`; `density`, default `1.0`): TerraForge's own
+  vegetation pass, so biomes are no longer bare. A `BlockPopulator` places trees, grass, ferns,
+  flowers, dead bushes and cacti from real land cover (how much) and climate biome (what), in this
+  world's vertical frame, with none of the ore veins, lava lakes and springs that
+  `vanilla-decorations` brings. Seeded from chunk coordinates, never the world seed: identical data
+  and config grow identical forests on any server.
 - `generation.vanilla-caves` (default `false`) hands each chunk to vanilla's cave and canyon carvers
   and its aquifer. It is off by default because those stages read vanilla's vertical frame
   (`min_y -64`, `sea_level 63`, one metre per block) from `overworld.json` and never TerraForge's:
@@ -70,8 +115,8 @@ not optional:
 - The `vegetation` config section (`vegetation.enabled`, `vegetation.density`). `density` was never
   read by any code path, and `enabled` was never TerraForge's own vegetation -- it was the switch for
   vanilla's entire decoration pass, which is now named `generation.vanilla-decorations` and is off by
-  default. TerraForge has no vegetation stage of its own and never had one. An existing
-  `terraforge.yml` keeps loading; both keys are ignored.
+  default. TerraForge's own vegetation now lives under `generation.vegetation` (see Added). An
+  existing `terraforge.yml` keeps loading; the old top-level keys are ignored.
 
 ### Fixed
 

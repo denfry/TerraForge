@@ -43,6 +43,12 @@ terrain:
 
   bedrock-thickness: 8
 
+  # Width, in blocks, of the ground each column's height is averaged over. 1.0 reads exactly the
+  # block's own footprint; 3.0 averages a 3x3-block window centred on the column -- a deterministic
+  # box filter over the height field, seamless across chunks, and the difference between walkable
+  # ground and one-block noise at a kilometre per block. Raise to 5.0 for gentler terrain still.
+  smoothing: 3.0
+
 water:
   oceans: true
   lakes: true
@@ -55,6 +61,18 @@ water:
   # at coarse blocks-per-km settings can look like a dense, hairy web rather than distinct rivers;
   # raise it to thin the network out. 0 renders every prepared line.
   min-visible-river-discharge-cms: 1.0
+  # Depth floors, in blocks. A water body is never shallower than this whatever its real depth
+  # rounds to at this vertical scale: at 20 m per block a 6 m lake or a 30 m default ocean would
+  # otherwise be a single block of water over a flat floor. Beds vary smoothly between the floor
+  # and twice it, so a lake has a deep middle rather than a flat bottom.
+  min-lake-depth-blocks: 3
+  min-river-depth-blocks: 2
+  min-ocean-depth-blocks: 6
+  # How far a shore's influence reaches, in blocks. Banks climb at most one block per block for
+  # this far from the water, and beds shelve out one block per block for this far from the land,
+  # so a lake is a basin with sloping banks rather than a slab in a pit. 0 leaves shores as the
+  # data has them. Each chunk samples a margin this wide, so the cost grows with it.
+  shore-blend-blocks: 4
 
 biomes:
   enabled: true
@@ -90,6 +108,21 @@ generation:
   # villages, temples, mineshafts, strongholds and other human-made generation.
   man-made-structures: false
   worker-threads: 4
+
+  # TerraForge's own vegetation: trees, grass, ferns, flowers, dead bushes and cacti placed from
+  # real land cover (how much grows) and climate (what grows), in this world's vertical frame and
+  # without any of the ore veins, lava lakes or springs that vanilla-decorations would bring.
+  # Deterministic per chunk: the same data and config grow the same forests on any server.
+  vegetation:
+    enabled: true
+    # Multiplier on every placement probability. 1.0 is calibrated to vanilla's forest density.
+    density: 1.0
+    # TerraForge's own procedural trees next to vanilla's: willows on river banks, palms on warm
+    # coasts, baobabs on the savanna, tall pines in the taiga, dead trees on the steppe, fallen logs.
+    custom-trees: true
+    # Flat cropland becomes tilled fields: wheat, carrots, potatoes, beetroot, pumpkins and melons in
+    # one-crop plots with irrigation channels. Sloping cropland stays meadow.
+    farmland: true
 
 pregeneration:
   # Never permit an unbounded async queue; one chunk is the safe default.

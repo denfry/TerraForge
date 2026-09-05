@@ -42,10 +42,10 @@ public record TerraForgeConfig(
                 new WorldSection("earth"),
                 new ScaleSection(1.0),
                 new EarthSection(new OriginSection(51.0, 10.0), "equirectangular"),
-                new TerrainSection(63, -64, 320, 1.0, 1.0, 0.0, 8),
+                new TerrainSection(63, -64, 320, 1.0, 1.0, 0.0, 8, TerrainSection.DEFAULT_SMOOTHING),
                 new WaterSection(true, true, true, 30.0, 1.0),
                 new BiomesSection(true, 0.35),
-                new GenerationSection(true, false, false, false, false, 4),
+                new GenerationSection(true, false, false, false, false, 4, VegetationSection.defaults()),
                 PregenerationSection.defaults(),
                 InfrastructureSection.allDisabled(),
                 new DataSection("data", "cache", "terraforge.db"),
@@ -86,6 +86,12 @@ public record TerraForgeConfig(
      * @param metersPerBlock       vertical metres represented by one block
      * @param fallbackElevation    elevation used when no DEM tile covers a point
      * @param bedrockThickness     blocks of bedrock at the world bottom
+     * @param smoothing            width, in blocks, of the ground a column's elevation is averaged
+     *                             over. {@code 1.0} averages exactly the block's own footprint;
+     *                             {@code 3.0} (the default) averages a 3x3-block window centred on
+     *                             it, which is a deterministic box filter over the height field and
+     *                             the difference between a walkable plain and one-block noise at a
+     *                             kilometre per block. Absent or zero means the default.
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record TerrainSection(
@@ -95,7 +101,17 @@ public record TerraForgeConfig(
             double verticalExaggeration,
             double metersPerBlock,
             double fallbackElevation,
-            int bedrockThickness) {
+            int bedrockThickness,
+            double smoothing) {
+
+        public static final double DEFAULT_SMOOTHING = 3.0;
+
+        /** A config written before {@code smoothing} existed loads with the default, not with 0. */
+        public TerrainSection {
+            if (smoothing == 0.0 || Double.isNaN(smoothing)) {
+                smoothing = DEFAULT_SMOOTHING;
+            }
+        }
     }
 
     /**
@@ -106,10 +122,52 @@ public record TerraForgeConfig(
      *                                    controls what the current world renders, so raising it later
      *                                    needs no re-preparation. 0 renders every prepared river,
      *                                    including the smallest headwaters HydroRIVERS maps.
+     * @param minLakeDepthBlocks         a lake is never shallower than this, in blocks, whatever its
+     *                                    real depth rounds to at this vertical scale. At 20 m per
+     *                                    block a 6 m lake would otherwise be one block of water on
+     *                                    a flat floor. Absent means 3.
+     * @param minRiverDepthBlocks        the same for rivers. Absent means 2.
+     * @param minOceanDepthBlocks        the same for the sea, which matters where no bathymetry is
+     *                                    prepared and {@code defaultOceanDepth} rounds to a block
+     *                                    or two. Absent means 6.
+     * @param shoreBlendBlocks           how far, in blocks, a shore's influence reaches: banks climb
+     *                                    at most one block per block for that far from the water,
+     *                                    and beds shelve out one block per block for that far from
+     *                                    the land, so a lake is a basin with sloping banks rather
+     *                                    than a slab in a pit. {@code 0} leaves shores as the data
+     *                                    has them. Absent means 4.
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record WaterSection(boolean oceans, boolean lakes, boolean rivers, double defaultOceanDepth,
-                                double minVisibleRiverDischargeCms) {
+                                double minVisibleRiverDischargeCms, Integer minLakeDepthBlocks,
+                                Integer minRiverDepthBlocks, Integer minOceanDepthBlocks,
+                                Integer shoreBlendBlocks) {
+
+        public static final int DEFAULT_MIN_LAKE_DEPTH = 3;
+        public static final int DEFAULT_MIN_RIVER_DEPTH = 2;
+        public static final int DEFAULT_MIN_OCEAN_DEPTH = 6;
+        public static final int DEFAULT_SHORE_BLEND = 4;
+
+        public WaterSection {
+            if (minLakeDepthBlocks == null) {
+                minLakeDepthBlocks = DEFAULT_MIN_LAKE_DEPTH;
+            }
+            if (minRiverDepthBlocks == null) {
+                minRiverDepthBlocks = DEFAULT_MIN_RIVER_DEPTH;
+            }
+            if (minOceanDepthBlocks == null) {
+                minOceanDepthBlocks = DEFAULT_MIN_OCEAN_DEPTH;
+            }
+            if (shoreBlendBlocks == null) {
+                shoreBlendBlocks = DEFAULT_SHORE_BLEND;
+            }
+        }
+
+        /** The five older switches, with the depth floors at their defaults. */
+        public WaterSection(boolean oceans, boolean lakes, boolean rivers, double defaultOceanDepth,
+                            double minVisibleRiverDischargeCms) {
+            this(oceans, lakes, rivers, defaultOceanDepth, minVisibleRiverDischargeCms, null, null, null, null);
+        }
     }
 
     /** @param edgeNoise strength of the dithering applied to biome borders (0 disables it) */
@@ -137,11 +195,51 @@ public record TerraForgeConfig(
      * @param manMadeStructures enables vanilla's mixed structure pass. This is off by default and
      *                          is not used while natural-only is enabled.
      * @param workerThreads     threads used for asynchronous chunk data preparation
+     * @param vegetation        TerraForge's own vegetation pass: trees, grass and flowers placed
+     *                          from real land cover and climate, in this world's vertical frame,
+     *                          with none of vanilla's ore veins, lava lakes or springs. Absent
+     *                          means enabled at full density.
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record GenerationSection(boolean naturalOnly, boolean caves, boolean vanillaCaves,
                                     boolean vanillaDecorations, boolean manMadeStructures,
-                                    int workerThreads) {
+                                    int workerThreads, VegetationSection vegetation) {
+
+        public GenerationSection {
+            if (vegetation == null) {
+                vegetation = VegetationSection.defaults();
+            }
+        }
+    }
+
+    /**
+     * @param enabled     whether TerraForge places vegetation at all
+     * @param density     multiplier on every placement probability; {@code 1.0} is the calibrated
+     *                    density, {@code 0.5} half of it, {@code 2.0} twice. Absent means {@code 1.0}.
+     * @param customTrees grow TerraForge's own procedural trees -- willows on river banks, palms on
+     *                    warm coasts, baobabs on the savanna, tall pines in the taiga, dead trees on
+     *                    the steppe, fallen logs in the forest -- alongside vanilla's. Absent means on.
+     * @param farmland    turn flat cropland into tilled fields of wheat, carrots, potatoes, beetroot,
+     *                    pumpkins and melons with irrigation channels. Absent means on.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record VegetationSection(boolean enabled, double density, Boolean customTrees, Boolean farmland) {
+
+        public VegetationSection {
+            if (density == 0.0 || Double.isNaN(density)) {
+                density = 1.0;
+            }
+            if (customTrees == null) {
+                customTrees = Boolean.TRUE;
+            }
+            if (farmland == null) {
+                farmland = Boolean.TRUE;
+            }
+        }
+
+        public static VegetationSection defaults() {
+            return new VegetationSection(true, 1.0, true, true);
+        }
     }
 
     /** Limits that keep disk-backed pregeneration bounded and safe to resume. */
