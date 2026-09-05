@@ -17,7 +17,7 @@ dependencies {
     implementation(project(":terraforge-towny"))
     implementation(project(":terraforge-bluemap"))
 
-    implementation("org.bstats:bstats-bukkit:3.0.2")
+    implementation("org.bstats:bstats-bukkit:3.2.1")
 
     compileOnly("io.papermc.paper:paper-api:$paperVersion")
     testCompileOnly("io.papermc.paper:paper-api:$paperVersion")
