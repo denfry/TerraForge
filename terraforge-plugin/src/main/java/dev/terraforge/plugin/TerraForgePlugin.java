@@ -58,6 +58,7 @@ import dev.terraforge.plugin.world.ManagedWorldManifestStore;
 import dev.terraforge.plugin.world.ManagedWorldService;
 import dev.terraforge.plugin.world.ManagedWorldStartupVerifier;
 import dev.terraforge.plugin.world.PaperWorldSettingsEditor;
+import dev.terraforge.plugin.world.PlanetEdgeGuard;
 import dev.terraforge.plugin.world.WorldCreationCheck;
 import dev.terraforge.towny.SqliteTownGeoService;
 import dev.terraforge.towny.TownGeoListener;
@@ -152,6 +153,10 @@ public final class TerraForgePlugin extends JavaPlugin implements Listener {
             return;
         }
         getServer().getPluginManager().registerEvents(this, this);
+        if (config.world().border().enabled()) {
+            // Registered before any world loads (load: STARTUP), so WorldLoadEvent draws each border.
+            getServer().getPluginManager().registerEvents(new PlanetEdgeGuard(getLogger(), LOG_PREFIX), this);
+        }
         // Lifecycle event registration (Paper's command API) closes once world loading starts, so this
         // cannot wait for ServerLoadEvent -- unlike the rest of onServerLoad, it depends on nothing
         // beyond this plugin instance.

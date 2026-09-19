@@ -90,7 +90,7 @@ public final class PluginLayout {
         TerraForgeConfig defaults = TerraForgeConfig.defaults();
         GeoPoint origin = options.origin() == null ? options.bounds().center() : options.origin();
         return new TerraForgeConfig(
-                new TerraForgeConfig.WorldSection(options.worldName()),
+                TerraForgeConfig.WorldSection.named(options.worldName()),
                 new TerraForgeConfig.ScaleSection(options.blocksPerKm()),
                 new TerraForgeConfig.EarthSection(
                         new TerraForgeConfig.OriginSection(origin.latitude(), origin.longitude()),

@@ -3,6 +3,7 @@ package dev.terraforge.generator;
 import dev.terraforge.core.terrain.TerrainSample;
 import dev.terraforge.core.terrain.VerticalScale;
 import dev.terraforge.core.coord.CoordinateTransformer;
+import dev.terraforge.core.coord.WorldExtent;
 import dev.terraforge.core.data.KarstProvider;
 import dev.terraforge.generator.biome.BiomeMapper;
 import dev.terraforge.generator.pipeline.ChunkSampler;
@@ -20,6 +21,7 @@ import org.bukkit.World;
 import org.bukkit.generator.BiomeProvider;
 import org.bukkit.generator.BlockPopulator;
 import org.bukkit.generator.ChunkGenerator;
+import org.bukkit.generator.LimitedRegion;
 import org.bukkit.generator.WorldInfo;
 
 /**
@@ -66,9 +68,20 @@ public final class TerraForgeChunkGenerator extends ChunkGenerator {
     private final Features features;
     private final KarstCaveCarver caveCarver;
 
+    /** The planet's edge when {@code world.border} is on; {@code null} generates without end. */
+    private final WorldExtent extent;
+
     public TerraForgeChunkGenerator(TerrainPipeline pipeline, VerticalScale verticalScale,
                                     BiomeMapper biomeMapper, int bedrockThickness, Features features,
                                     CoordinateTransformer transformer, KarstProvider karst) {
+        this(pipeline, verticalScale, biomeMapper, bedrockThickness, features, transformer, karst, null);
+    }
+
+    public TerraForgeChunkGenerator(TerrainPipeline pipeline, VerticalScale verticalScale,
+                                    BiomeMapper biomeMapper, int bedrockThickness, Features features,
+                                    CoordinateTransformer transformer, KarstProvider karst,
+                                    WorldExtent extent) {
+        this.extent = extent;
         this.pipeline = pipeline;
         this.verticalScale = verticalScale;
         this.biomeMapper = biomeMapper;
@@ -119,6 +132,11 @@ public final class TerraForgeChunkGenerator extends ChunkGenerator {
 
     @Override
     public void generateNoise(WorldInfo worldInfo, Random random, int chunkX, int chunkZ, ChunkData chunk) {
+        if (beyondEdge(chunkX, chunkZ)) {
+            // Same reason as below: whatever was prefilled, past the edge of the planet is void.
+            chunk.setRegion(0, chunk.getMinHeight(), 0, 16, chunk.getMaxHeight(), 16, Material.AIR);
+            return;
+        }
         ChunkSampler.ChunkSamples samples = pipeline.sampleChunk(chunkX, chunkZ);
         int floor = chunk.getMinHeight() + bedrockThickness;
         int ceiling = chunk.getMaxHeight() - 1;
@@ -157,6 +175,9 @@ public final class TerraForgeChunkGenerator extends ChunkGenerator {
 
     @Override
     public void generateSurface(WorldInfo worldInfo, Random random, int chunkX, int chunkZ, ChunkData chunk) {
+        if (beyondEdge(chunkX, chunkZ)) {
+            return;
+        }
         ChunkSampler.ChunkSamples samples = pipeline.sampleChunk(chunkX, chunkZ);
         int floor = chunk.getMinHeight() + bedrockThickness;
         int ceiling = chunk.getMaxHeight() - 1;
@@ -180,12 +201,18 @@ public final class TerraForgeChunkGenerator extends ChunkGenerator {
 
     @Override
     public void generateBedrock(WorldInfo worldInfo, Random random, int chunkX, int chunkZ, ChunkData chunk) {
+        if (beyondEdge(chunkX, chunkZ)) {
+            return;
+        }
         chunk.setRegion(0, chunk.getMinHeight(), 0, 16, chunk.getMinHeight() + bedrockThickness, 16,
                 Material.BEDROCK);
     }
 
     @Override
     public int getBaseHeight(WorldInfo worldInfo, Random random, int x, int z, HeightMap heightMap) {
+        if (beyondEdge(x >> 4, z >> 4)) {
+            return worldInfo.getMinHeight();
+        }
         ChunkSampler.ChunkSamples samples = pipeline.sampleChunk(x >> 4, z >> 4);
         TerrainSample sample = samples.at(x & 15, z & 15);
         int surface = sample.surfaceY();
@@ -257,7 +284,7 @@ public final class TerraForgeChunkGenerator extends ChunkGenerator {
     /** TerraForge's karst caves. Geographic coordinates only; the supplied vanilla random is ignored. */
     @Override
     public void generateCaves(WorldInfo worldInfo, Random random, int chunkX, int chunkZ, ChunkData chunk) {
-        if (caveCarver != null) {
+        if (caveCarver != null && !beyondEdge(chunkX, chunkZ)) {
             caveCarver.carve(chunkX, chunkZ, chunk);
         }
     }
@@ -286,8 +313,29 @@ public final class TerraForgeChunkGenerator extends ChunkGenerator {
         if (!features.vegetation()) {
             return List.of();
         }
-        return List.of(new VegetationPopulator(pipeline, new VegetationPlan(features.vegetationDensity(),
-                features.customTrees(), features.farmland())));
+        BlockPopulator vegetation = new VegetationPopulator(pipeline,
+                new VegetationPlan(features.vegetationDensity(), features.customTrees(), features.farmland()));
+        if (extent == null) {
+            return List.of(vegetation);
+        }
+        return List.of(new BlockPopulator() {
+            @Override
+            public void populate(WorldInfo worldInfo, Random random, int chunkX, int chunkZ,
+                                 LimitedRegion region) {
+                if (!beyondEdge(chunkX, chunkZ)) {
+                    vegetation.populate(worldInfo, random, chunkX, chunkZ, region);
+                }
+            }
+        });
+    }
+
+    /** The planet's edge, or {@code null} when this world has no border. */
+    public WorldExtent extent() {
+        return extent;
+    }
+
+    private boolean beyondEdge(int chunkX, int chunkZ) {
+        return extent != null && !extent.intersectsChunk(chunkX, chunkZ);
     }
 
     @Override

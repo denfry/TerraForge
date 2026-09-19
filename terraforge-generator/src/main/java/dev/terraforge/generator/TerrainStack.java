@@ -3,6 +3,7 @@ package dev.terraforge.generator;
 import dev.terraforge.core.cache.CacheManager;
 import dev.terraforge.core.config.TerraForgeConfig;
 import dev.terraforge.core.coord.CoordinateTransformer;
+import dev.terraforge.core.coord.WorldExtent;
 import dev.terraforge.core.data.ConstantLandcoverProvider;
 import dev.terraforge.core.data.ElevationProvider;
 import dev.terraforge.core.data.LandcoverProvider;
@@ -107,6 +108,7 @@ public final class TerrainStack {
     public TerraForgeChunkGenerator chunkGenerator() {
         return new TerraForgeChunkGenerator(pipeline, verticalScale, biomeMapper,
                 config.terrain().bedrockThickness(),
-                TerraForgeChunkGenerator.Features.from(config.generation()), transformer, karst);
+                TerraForgeChunkGenerator.Features.from(config.generation()), transformer, karst,
+                config.world().border().enabled() ? WorldExtent.ofPlanet(transformer) : null);
     }
 }

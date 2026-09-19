@@ -9,6 +9,16 @@ enable on an invalid configuration rather than generating a broken world.
 | Key | Default | Meaning |
 |---|---|---|
 | `name` | `earth` | name of the world TerraForge generates |
+| `border.enabled` | `false` | end the world at the edge of the planet |
+
+The projection has no end of its own: longitude wraps, so east of the antimeridian the Earth repeats,
+and latitude clamps, so past a pole the polar row repeats forever. With `border.enabled: true` the
+world is the one copy of the planet between those seams (at one block per kilometre with the origin
+at 0/0: x -20037..20036, z -10018..10017). Chunks beyond it generate as void, players, teleports and
+vehicles are held inside, and the vanilla world border -- which can only be a square -- is drawn
+around the longer axis. Takes effect on restart. Existing chunks are never rewritten: turning it on
+in a live world needs no regeneration, and chunks already generated past the edge simply become
+unreachable until their region files are deleted.
 
 ## `scale`
 

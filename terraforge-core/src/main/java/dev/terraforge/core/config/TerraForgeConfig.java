@@ -39,7 +39,7 @@ public record TerraForgeConfig(
 
     public static TerraForgeConfig defaults() {
         return new TerraForgeConfig(
-                new WorldSection("earth"),
+                WorldSection.named("earth"),
                 new ScaleSection(1.0),
                 new EarthSection(new OriginSection(51.0, 10.0), "equirectangular"),
                 new TerrainSection(63, -64, 320, 1.0, 1.0, 0.0, 8, TerrainSection.DEFAULT_SMOOTHING),
@@ -58,7 +58,30 @@ public record TerraForgeConfig(
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record WorldSection(String name) {
+    public record WorldSection(String name, BorderSection border) {
+
+        /** A config written before {@code border} existed loads with the border off. */
+        public WorldSection {
+            if (border == null) {
+                border = BorderSection.disabled();
+            }
+        }
+
+        public static WorldSection named(String name) {
+            return new WorldSection(name, BorderSection.disabled());
+        }
+    }
+
+    /**
+     * @param enabled end the world at the edge of the planet: nothing is generated beyond it and
+     *                players cannot cross it. Off by default, because turning it on in a world that
+     *                already has builds past the edge would lock their owners out of them.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record BorderSection(boolean enabled) {
+        public static BorderSection disabled() {
+            return new BorderSection(false);
+        }
     }
 
     /** Horizontal scale. 1.0 means one block covers one kilometre of ground. */

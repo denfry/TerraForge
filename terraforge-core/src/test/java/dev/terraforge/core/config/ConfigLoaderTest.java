@@ -49,6 +49,13 @@ class ConfigLoaderTest {
     }
 
     @Test
+    @DisplayName("the border ships off, and a config written before it existed still loads with it off")
+    void borderDefaultsOff() throws IOException {
+        assertThat(shippedConfig().world().border().enabled()).isFalse();
+        assertThat(new TerraForgeConfig.WorldSection("earth", null).border().enabled()).isFalse();
+    }
+
+    @Test
     void defaultsValidate() {
         assertThat(loader.validate(TerraForgeConfig.defaults())).isNotNull();
     }

@@ -27,6 +27,12 @@ not optional:
 
 ### Added
 
+- `world.border.enabled`: end the world at the edge of the planet. The projection never ends on its
+  own -- east of the antimeridian the Earth repeats, and past a pole the polar row is smeared out
+  forever -- so with the border on, chunks beyond the planet generate as void, players, teleports
+  and vehicles are held inside, and the vanilla world border is drawn around the longer axis. Off
+  by default; existing chunks are never touched, so it can be turned on in a live world without
+  regenerating it (chunks already generated past the edge stay until their region files are deleted).
 - Vegetation that reads its surroundings. River and lake banks grow sugar cane, willows, tall grass,
   large ferns, orchids and firefly bushes; oases in the desert grow palms and reeds; warm beaches
   grow palms. Grassland is meadow with flower drifts of one species per patch, sunflower fields and
