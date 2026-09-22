@@ -48,19 +48,33 @@ public final class VegetationPlan {
     private final double density;
     private final boolean customTrees;
     private final boolean farmland;
+    private final double farmlandShare;
+
+    /** Picks which fields are tilled; independent of {@link #FIELD_SALT} so crops do not bias it. */
+    private static final long TILLED_SALT = 0x54494C4CL;
+
+    /** Every flat cropland field tilled, as before {@code farmland-share} existed. */
+    public VegetationPlan(double density, boolean customTrees, boolean farmland) {
+        this(density, customTrees, farmland, 1.0);
+    }
 
     /**
-     * @param density     multiplier on every natural probability; {@code 1.0} is the calibrated density
-     * @param customTrees draw TerraForge's procedural trees as well as vanilla's
-     * @param farmland    till flat cropland into fields
+     * @param density       multiplier on every natural probability; {@code 1.0} is the calibrated density
+     * @param customTrees   draw TerraForge's procedural trees as well as vanilla's
+     * @param farmland      till flat cropland into fields
+     * @param farmlandShare share of cropland fields that are tilled, {@code 0..1}; the rest grow as meadow
      */
-    public VegetationPlan(double density, boolean customTrees, boolean farmland) {
+    public VegetationPlan(double density, boolean customTrees, boolean farmland, double farmlandShare) {
         if (!(density >= 0.0) || !Double.isFinite(density)) {
             throw new IllegalArgumentException("vegetation density must not be negative: " + density);
+        }
+        if (!(farmlandShare >= 0.0 && farmlandShare <= 1.0)) {
+            throw new IllegalArgumentException("farmland share must be between 0 and 1: " + farmlandShare);
         }
         this.density = density;
         this.customTrees = customTrees;
         this.farmland = farmland;
+        this.farmlandShare = farmlandShare;
     }
 
     /** Calibrated density, every feature on. */
@@ -615,6 +629,9 @@ public final class VegetationPlan {
     private Placement field(Column column, Random random) {
         int x = column.x();
         int z = column.z();
+        if (farmlandShare < 1.0 && CellNoise.cell(x, z, FIELD_SIZE, TILLED_SALT) >= farmlandShare) {
+            return null; // not farmed at all: meadow
+        }
         long id = CellNoise.cellId(x, z, FIELD_SIZE, FIELD_SALT);
         double kind = CellNoise.cell(x, z, FIELD_SIZE, FIELD_SALT);
         if (kind < 0.12) {

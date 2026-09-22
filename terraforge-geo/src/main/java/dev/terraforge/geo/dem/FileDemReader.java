@@ -1,10 +1,12 @@
 package dev.terraforge.geo.dem;
 
+import dev.terraforge.geo.io.ParallelScan;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
@@ -50,32 +52,38 @@ public final class FileDemReader implements DemReader {
         long largestTileBytes = 0;
 
         if (Files.isDirectory(directory)) {
-            try (Stream<Path> files = Files.list(directory)) {
-                for (Path file : files.filter(p -> p.getFileName().toString().endsWith(".tfdem")).toList()) {
-                    TfDemHeader header = readHeader(file);
-                    if (header == null) {
-                        continue;
-                    }
-                    DemTileKey nameKey;
-                    try {
-                        nameKey = DemTileKey.parse(file.getFileName().toString());
-                    } catch (IllegalArgumentException e) {
-                        LOG.log(System.Logger.Level.WARNING,
-                                "Skipping DEM tile with unrecognised name: {0}", file.getFileName());
-                        continue;
-                    }
-                    if (!nameKey.equals(header.key())) {
-                        LOG.log(System.Logger.Level.WARNING,
-                                "Skipping DEM tile {0}: header says it covers {1}",
-                                file.getFileName(), header.key());
-                        continue;
-                    }
-                    catalogue.put(nameKey, file);
-                    bathymetry |= header.bathymetry();
-                    // Largest, not mean: the cache bound must hold for the heaviest tile, and a
-                    // directory usually has one grid size anyway.
-                    largestTileBytes = Math.max(largestTileBytes, header.expectedFileSize());
+            List<Path> files;
+            try (Stream<Path> listing = Files.list(directory)) {
+                files = listing.filter(p -> p.getFileName().toString().endsWith(".tfdem")).toList();
+            }
+            // Only the header reads run in parallel; what enters the catalogue is decided below, in
+            // listing order, exactly as a sequential scan would.
+            List<TfDemHeader> headers = ParallelScan.map(files, FileDemReader::readHeader);
+            for (int index = 0; index < files.size(); index++) {
+                Path file = files.get(index);
+                TfDemHeader header = headers.get(index);
+                if (header == null) {
+                    continue;
                 }
+                DemTileKey nameKey;
+                try {
+                    nameKey = DemTileKey.parse(file.getFileName().toString());
+                } catch (IllegalArgumentException e) {
+                    LOG.log(System.Logger.Level.WARNING,
+                            "Skipping DEM tile with unrecognised name: {0}", file.getFileName());
+                    continue;
+                }
+                if (!nameKey.equals(header.key())) {
+                    LOG.log(System.Logger.Level.WARNING,
+                            "Skipping DEM tile {0}: header says it covers {1}",
+                            file.getFileName(), header.key());
+                    continue;
+                }
+                catalogue.put(nameKey, file);
+                bathymetry |= header.bathymetry();
+                // Largest, not mean: the cache bound must hold for the heaviest tile, and a
+                // directory usually has one grid size anyway.
+                largestTileBytes = Math.max(largestTileBytes, header.expectedFileSize());
             }
         }
         LOG.log(System.Logger.Level.INFO, "DEM directory {0}: {1} prepared tiles{2}",

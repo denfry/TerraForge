@@ -48,8 +48,31 @@ See [projection.md](projection.md) for the resulting world sizes.
 | `fallback-elevation` | `0.0` | elevation used where no DEM tile exists |
 | `bedrock-thickness` | `8` | bedrock layers at the world bottom |
 | `smoothing` | `3.0` | width in blocks of the ground a column's height is averaged over (`1.0` = the block's own footprint only) |
+| `relief-curve-meters` | `0` | knee of the relief curve in metres; `0` keeps the vertical scale linear |
+| `generated-min-y` | `min-y` | lowest Y terrain is generated at; the bedrock starts here, the world below stays empty |
+| `generated-max-y` | `max-y` | one above the highest Y terrain may reach |
 
 Out-of-range heights are soft-clamped, never flattened.
+
+`relief-curve-meters` bends the vertical scale. With a knee `R`, `meters-per-block` holds exactly at
+sea level and a block at elevation `v` covers `meters-per-block * (1 + v / R)` metres, symmetrically
+under the sea. At a kilometre per block horizontally a linear scale cannot win: fine enough to show
+a 200 m hill, it multiplies a mountain range's slopes into walls of single-column spikes; coarse
+enough for mountains, it flattens every lowland. The curve gives lowlands their hills and mountains
+their slopes. `meters-per-block: 15` with `relief-curve-meters: 1300` puts a 100 m hill at six
+blocks, the Alps' 3,000 m at about 115 blocks above the sea, and Everest under y=248 of a 256-block
+band. Changing it changes column heights: regenerate, do not mix.
+
+`generated-min-y` and `generated-max-y` keep the planet inside a band of an otherwise unchanged
+world. The band is what a server with old clients needs: a 1.16 client, joining through
+ViaBackwards, sees y 0..255 and nothing else, so a world spanning -512..512 is void below y=0 for
+those players -- sea beds, ores and caves included. `generated-min-y: 0`, `generated-max-y: 256`
+with the vanilla `min-y: -64`, `max-y: 320` puts every block of terrain where they can see it,
+**and needs no height datapack**. That matters beyond this world: the height datapack replaces the
+overworld dimension type for every overworld-type world on the server, so a Multiverse spawn or
+lobby world loses whatever it had outside the new range. Prefer the band to a changed world height
+whenever another overworld-type world shares the server. On startup TerraForge warns when
+ViaBackwards is installed and the terrain reaches outside 0..255.
 
 `smoothing` is a box filter over the height field, applied by widening each column's DEM footprint:
 at `3.0` every column reports the mean elevation of a 3×3-block window centred on it. Because each
@@ -87,7 +110,12 @@ lake sits at its own altitude and the land around it at the DEM's, and at a coar
 the two disagree by several blocks. Within this many blocks of the water, a land column is never
 higher than the water surface plus its distance from it, so the bank climbs at most one block per
 block; and a water column is never deeper than its distance from the land, so the bed shelves out
-one block per block before reaching its full depth. Both only move the surface towards the water.
+one block per block before reaching its full depth. Both limits fade out quadratically across the
+reach instead of stopping at its edge, so high land behind a beach and a deep bed beyond a shelf
+meet the shore without a wall where the blend ends. Land touching water is never lower than that
+water's surface -- coastal flats the DEM puts below the sea would otherwise sit beside water held up
+by nothing, which floods the moment a player breaks the block next to it. Otherwise the rules only
+move the surface towards the water.
 Each chunk samples a margin this wide around itself, so a shore just over the chunk border shapes
 both sides identically; the cost of sampling grows with the margin (`4` is about twice the columns
 of `0`). `0` leaves shores as the data has them.
@@ -176,6 +204,7 @@ is named for what it does rather than for what one might want from it.
 | `density` | `1.0` | multiplier on every natural placement probability |
 | `custom-trees` | `true` | draw TerraForge's own procedural trees alongside vanilla's |
 | `farmland` | `true` | till flat cropland into crop fields |
+| `farmland-share` | `0.25` | share of flat cropland plots that are tilled; the rest grow as meadow |
 
 This is the vegetation `vanilla-decorations` cannot give a scaled world. It runs as a Paper
 `BlockPopulator` on the chunk and its one-chunk buffer, in this world's vertical frame, and places
@@ -205,7 +234,9 @@ recognisable appear where they belong:
 - **Cropland** that is level becomes tilled fields when `farmland` is on: each sixteen-block plot is
   one crop -- wheat, potatoes, carrots, beetroot, a pumpkin patch, melons in warm climates -- at one
   ripeness, in rows, with an irrigation channel every eighth row so the farmland stays wet. One plot
-  in eight lies fallow as meadow, and sloping cropland stays meadow too. Fields ignore `density`.
+  in eight lies fallow as meadow, and sloping cropland stays meadow too. Only `farmland-share` of
+  the plots is farmed at all -- at a kilometre per block WorldCover's cropland covers whole regions,
+  and tilling all of it made them one endless allotment. Fields ignore `density`.
 - **Under water**, lakes and rivers get lily pads on the shallows and seagrass on the bed; temperate
   seas grow kelp forests; warm seas grow coral reefs with sea pickles on the shallows; the frozen
   ocean floor and the abyss stay bare.
@@ -234,6 +265,36 @@ A top-level `vegetation:` block from an older config is still ignored: unknown k
 load. Its `density` was never
 honoured by any code path, and its `enabled` was really the switch for vanilla's entire decoration
 pass, now named `generation.vanilla-decorations`.
+
+### `generation.underground`
+
+| Key | Default | Meaning |
+|---|---|---|
+| `ores` | `true` | coal, iron, copper, gold, redstone, lapis, diamond, and emerald under mountains |
+| `ore-multiplier` | `1.0` | multiplier on every ore vein count; `1.0` is vanilla 1.16's density |
+| `stone-variety` | `true` | dirt, gravel, granite, diorite, andesite, tuff and blackstone pockets |
+| `caves` | `true` | winding cave systems under land |
+| `cave-rarity` | `7.0` | one cave system starts in one chunk of this many; lower means more caves |
+
+What `vanilla-decorations` and `vanilla-caves` cannot give a scaled world. The pass runs inside
+chunk generation, on Paper's generation threads: it models the chunk's stone from the samples the
+generator already holds, places pockets, carves caves and places ore in that order -- vanilla's
+order -- and writes each changed block to the chunk once. Nothing is patched into a live world
+afterwards, so it costs the server thread nothing and sends no block updates to players.
+
+Every band keeps vanilla 1.16's depth below the sea rather than its absolute Y, so in a world with
+`sea-level: 63` and terrain from y=0 the table is exactly vanilla 1.16's -- diamonds and redstone
+in y 1..15, gold to 31, iron to 63, coal to 127 -- and in a deeper world it moves down with the sea,
+continuing the deep ores at the same density all the way to the bedrock. Mountains above vanilla's
+y=127 get coal and some iron. Emerald is placed only where the real ground is at least 1,000 m high.
+Ores are 1.16's own plus copper, never deepslate variants, so a 1.16 client through ViaBackwards
+sees the same ore the server holds.
+
+Caves are vanilla 1.16's tunnels, rooms and forks, from chunk coordinates alone. They stay six
+blocks under the ground, and a further four blocks under any water within four columns -- read from
+the sampler's shore margin, so water just over the chunk edge counts too -- so a cave never opens a
+hole in a field, drains a lake, runs under a river or breaches the seabed. `generation.caves` is a
+different thing: TerraForge's karst carver, constrained to prepared karst regions.
 
 ## `pregeneration`
 

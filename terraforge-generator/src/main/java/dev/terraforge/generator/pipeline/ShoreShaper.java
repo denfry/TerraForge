@@ -17,7 +17,20 @@ import dev.terraforge.core.terrain.TerrainSample;
  *       shelves out one block per block before reaching its full depth.</li>
  * </ul>
  *
- * <p>Both only ever move the surface towards the water: a bank is lowered, a bed is raised. Nothing
+ * <p>Both rules fade out across the reach instead of stopping at its edge. A hard limit left the
+ * ground just beyond it untouched, so a coast below high land became a strip of beach and then a
+ * wall -- as high as the land was above the water -- exactly {@code reach} blocks inland, and a
+ * sea bed shelved out for {@code reach} blocks and then dropped sheer to its full depth. Now the
+ * limit gives way quadratically with distance, reaching the untouched height one block past the
+ * reach: gentle at the waterline, and no step anywhere the data does not have one.
+ *
+ * <p>One rule raises instead of lowering: land touching water is never below that water's surface.
+ * The DEM puts coastal flats and polders a few metres under the sea, and the water data does not
+ * always cover them, so a dry column could sit two blocks below the ocean beside it -- water held up
+ * by nothing, which floods the moment a player breaks the block next to it. Raised to the water's
+ * level, that column is the bank the water rests against.
+ *
+ * <p>Otherwise both rules only move the surface towards the water: a bank is lowered, a bed is raised. Nothing
  * else in the sample changes. The rules read a margin of columns around the chunk, which the
  * sampler provides, so the result is the same whichever chunk a column is looked at from.
  *
@@ -54,32 +67,50 @@ final class ShoreShaper {
         }
     }
 
-    /** A land column: no higher than the nearest water's surface plus the distance to it. */
+    /**
+     * A land column: near the water no higher than the water's surface plus the distance to it, the
+     * excess above that let back in as the distance grows.
+     */
     private static TerrainSample bank(TerrainSample[] source, int width, int x, int z, int reach,
                                       TerrainSample sample) {
-        int ceiling = Integer.MAX_VALUE;
-        for (int d = 1; d <= reach && ceiling == Integer.MAX_VALUE; d++) {
+        int touching = ringMax(source, width, x, z, 1, true);
+        if (touching != Integer.MIN_VALUE && sample.surfaceY() < touching) {
+            return withSurface(sample, touching); // a bank, not a hole beside the water
+        }
+        for (int d = 1; d <= reach; d++) {
             int ring = ringMax(source, width, x, z, d, true);
             if (ring != Integer.MIN_VALUE) {
-                ceiling = ring + d;
+                int ceiling = ring + d;
+                int excess = sample.surfaceY() - ceiling;
+                return excess <= 0 ? sample : withSurface(sample, ceiling + fade(excess, d, reach));
             }
         }
-        if (ceiling == Integer.MAX_VALUE || sample.surfaceY() <= ceiling) {
-            return sample;
-        }
-        return withSurface(sample, ceiling);
+        return sample;
     }
 
-    /** A water column: no deeper than its distance to the nearest land. */
+    /**
+     * A water column: near the land no deeper than its distance to it, the depth beyond that let back
+     * in as the distance grows.
+     */
     private static TerrainSample shelve(TerrainSample[] source, int width, int x, int z, int reach,
                                         TerrainSample sample) {
         for (int d = 1; d <= reach; d++) {
             if (ringMax(source, width, x, z, d, false) != Integer.MIN_VALUE) {
                 int floor = sample.waterSurfaceY() - d;
-                return sample.surfaceY() >= floor ? sample : withSurface(sample, floor);
+                int excess = floor - sample.surfaceY();
+                return excess <= 0 ? sample : withSurface(sample, floor - fade(excess, d, reach));
             }
         }
         return sample;
+    }
+
+    /**
+     * How much of {@code excess} a column {@code d} blocks from the shore keeps: none at the waterline,
+     * all of it one block past the reach, quadratic in between.
+     */
+    static int fade(int excess, int d, int reach) {
+        double t = (double) d / (reach + 1);
+        return (int) Math.round(excess * t * t);
     }
 
     /**

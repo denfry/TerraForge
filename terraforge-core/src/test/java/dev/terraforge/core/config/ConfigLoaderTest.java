@@ -163,6 +163,59 @@ class ConfigLoaderTest {
     }
 
     @Test
+    @DisplayName("the underground pass defaults on when a config predates it, and reads every key")
+    void undergroundDefaultsOnAndReadsEveryKey() throws IOException {
+        String predates = """
+                generation:
+                  caves: true
+                """;
+        var absent = loader.read(new java.io.ByteArrayInputStream(predates.getBytes()))
+                .generation().underground();
+        assertThat(absent).isEqualTo(TerraForgeConfig.UndergroundSection.defaults());
+        assertThat(absent.ores()).isTrue();
+        assertThat(absent.caves()).isTrue();
+        assertThat(absent.caveRarity()).isEqualTo(7.0);
+
+        String explicit = """
+                generation:
+                  underground:
+                    ores: false
+                    ore-multiplier: 1.5
+                    stone-variety: false
+                    caves: false
+                    cave-rarity: 3.5
+                """;
+        var read = loader.read(new java.io.ByteArrayInputStream(explicit.getBytes()))
+                .generation().underground();
+        assertThat(read).isEqualTo(new TerraForgeConfig.UndergroundSection(false, 1.5, false, false, 3.5));
+    }
+
+    @Test
+    @DisplayName("an underground section that cannot place anything sensible is refused")
+    void undergroundValuesAreValidated() throws IOException {
+        TerraForgeConfig shipped = loader.validate(shippedConfig());
+        assertThat(shipped.generation().underground()).isEqualTo(TerraForgeConfig.UndergroundSection.defaults());
+
+        assertThatThrownBy(() -> loader.validate(withUnderground(shipped,
+                new TerraForgeConfig.UndergroundSection(true, -1.0, true, true, 7.0))))
+                .isInstanceOf(ConfigLoader.ConfigException.class)
+                .hasMessageContaining("generation.underground.ore-multiplier");
+        assertThatThrownBy(() -> loader.validate(withUnderground(shipped,
+                new TerraForgeConfig.UndergroundSection(true, 1.0, true, true, 0.5))))
+                .isInstanceOf(ConfigLoader.ConfigException.class)
+                .hasMessageContaining("generation.underground.cave-rarity");
+    }
+
+    private static TerraForgeConfig withUnderground(TerraForgeConfig c, TerraForgeConfig.UndergroundSection underground) {
+        var g = c.generation();
+        var generation = new TerraForgeConfig.GenerationSection(g.naturalOnly(), g.caves(), g.vanillaCaves(),
+                g.vanillaDecorations(), g.manMadeStructures(), g.workerThreads(), g.vegetation(), underground);
+        return new TerraForgeConfig(c.world(), c.scale(), c.earth(), c.terrain(), c.water(), c.biomes(),
+                generation, c.pregeneration(), c.infrastructure(), c.data(), c.cache(), c.towny(),
+                c.bluemap(), c.debug(), c.testRegion());
+    }
+
+    @Test
     @DisplayName("unknown keys are ignored so older configs keep working")
     void unknownKeysAreIgnored() throws IOException {
         String yaml = """

@@ -9,6 +9,9 @@ format. Both are stated explicitly per release, because either one means regener
 
 ## [Unreleased]
 
+**Generation changes again in this release** (shores, relief curve, underground): regenerate rather
+than mix old and new chunks.
+
 **This release changes both the prepared data format and the world format.** Two migrations are
 not optional:
 
@@ -27,6 +30,32 @@ not optional:
 
 ### Added
 
+- `generation.underground`: ores, stone pockets and cave systems, generated with the chunk on the
+  generation threads and written to it once -- never patched into a live world. Vanilla 1.16's ore
+  table (coal, iron, gold, redstone, lapis, diamond, emerald under mountains) plus copper, kept at
+  vanilla's depth below this world's sea level and continued to the bedrock in deeper worlds; no
+  deepslate variants, so 1.16 clients see every ore. Dirt, gravel, granite, diorite, andesite, tuff
+  and blackstone pockets. Vanilla 1.16's winding caves, kept six blocks under the ground and away
+  from any water, including water just over the chunk edge. `ores`, `ore-multiplier`,
+  `stone-variety`, `caves` and `cave-rarity`; all on by default. **New chunks only**: chunks that
+  already exist keep their plain stone.
+- `terrain.relief-curve-meters`: a logarithmic relief curve. `meters-per-block` holds at sea level
+  and each block covers `1 + elevation / knee` times more with altitude, so lowlands keep their
+  hills while mountains get slopes instead of single-column spikes. `0` (the default) keeps the
+  scale linear.
+- `terrain.generated-min-y` / `generated-max-y`: keep the terrain in a band of an unchanged world.
+  `0..256` in a vanilla-height world is what 1.16 clients through ViaBackwards can see, and needs no
+  height datapack -- which would otherwise change the height of every overworld-type world on the
+  server, a Multiverse spawn world included.
+- A startup warning when ViaBackwards is installed and the terrain reaches outside y 0..255.
+- `generation.vegetation.farmland-share` (default `0.25`): the share of flat cropland plots that are
+  tilled. At a kilometre per block WorldCover's cropland covers whole regions.
+- Faster startup: the DEM and land-cover catalogues read file headers in parallel, and the DEM,
+  water, land-cover, karst and boundary loaders run concurrently. The water catalogue is cached in
+  `data.cache-directory` (`water-catalogue.bin`), keyed to the database file and the river
+  threshold, so a restart no longer scans the `water_bodies` table -- on a whole-planet database the
+  catalogue columns sit behind every row's geometry, and the scan read the whole file. Any mismatch
+  or damage just triggers a rescan. Together: about 28 s of `onEnable` down to the slowest loader.
 - `world.border.enabled`: end the world at the edge of the planet. The projection never ends on its
   own -- east of the antimeridian the Earth repeats, and past a pole the polar row is smeared out
   forever -- so with the border on, chunks beyond the planet generate as void, players, teleports
@@ -126,6 +155,19 @@ not optional:
 
 ### Fixed
 
+- Shores no longer end in a wall. The bank and shelf limits of `water.shore-blend-blocks` stopped
+  dead at their reach, so high land behind a beach rose as a cliff exactly that far inland and a deep
+  bed dropped sheer beyond its shelf; both now fade out across the reach.
+- Players no longer dig into the ocean. Coastal land the DEM puts below the sea sat beside water
+  standing higher than it, held up by nothing, and flooded as soon as a neighbouring block was
+  broken; land touching water is now never below that water's surface.
+- The height datapack now carries vanilla 1.21.8's `cloud_height: 192`. Without it every
+  overworld-type world on the server rendered no clouds. Packs staged before still verify.
+- Boundary services (`GeoBoundaryProjector`, `GeoPointResolver`) are registered in `onEnable`, so
+  plugins that look them up in their own `onEnable` find them; they were registered only after
+  every plugin had enabled.
+- A world bordered at the pole or the antimeridian no longer asks for nonexistent DEM tiles
+  (`N90...`, `E180`) and logs each one as missing.
 - `generation.caves` did not generate TerraForge's karst caves. It was returned from
   `ChunkGenerator.shouldGenerateCaves()`, which is Paper's switch for *vanilla's* carvers and
   aquifer, while `KarstCaveCarver` ran unconditionally regardless of the setting. In a scaled world

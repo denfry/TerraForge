@@ -244,6 +244,33 @@ class VegetationPlanTest {
         }
     }
 
+    /**
+     * Regression for allotments everywhere: at a kilometre per block WorldCover's cropland covers
+     * whole regions, and every flat cropland field was tilled.
+     */
+    @Test
+    void onlyTheConfiguredShareOfCroplandIsTilled() {
+        TerrainSample cropland = sample(ClimateBiome.GRASSLAND, LandcoverClass.CROPLAND);
+        VegetationPlan quarter = new VegetationPlan(1.0, true, true, 0.25);
+        VegetationPlan none = new VegetationPlan(1.0, true, true, 0.0);
+        Random random = new Random(41);
+        int tilled = 0;
+        int fields = 40;
+        for (int f = 0; f < fields * fields; f++) {
+            int x = (f % fields) * VegetationPlan.FIELD_SIZE + 3; // a crop row, never a channel
+            int z = (f / fields) * VegetationPlan.FIELD_SIZE + 3;
+            Column column = Column.plain(cropland, Material.GRASS_BLOCK, x, z);
+            if (quarter.choose(column, random) instanceof Placement.Crop
+                    || quarter.choose(column, random) instanceof Placement.Irrigation) {
+                tilled++;
+            }
+            assertThat(none.choose(column, random))
+                    .isNotInstanceOfAny(Placement.Crop.class, Placement.Irrigation.class);
+        }
+        // A quarter of the fields, less the ones lying fallow; far below the ~88% tilled before.
+        assertThat(tilled).isBetween(fields * fields / 8, fields * fields * 3 / 10);
+    }
+
     @Test
     void customTreesCanBeSwitchedOff() {
         VegetationPlan vanillaOnly = new VegetationPlan(1.0, false, true);

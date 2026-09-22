@@ -54,6 +54,20 @@ public final class SqliteWaterProvider {
      */
     public static WaterProvider load(Path database, CacheManager cacheManager, int maxResidentFeatures,
                                       double minVisibleRiverDischargeCms) throws IOException {
+        return load(database, cacheManager, maxResidentFeatures, minVisibleRiverDischargeCms, null);
+    }
+
+    /**
+     * As {@link #load(Path, CacheManager, int, double)}, reusing the catalogue saved in
+     * {@code catalogueCacheDirectory} by a previous start when it was built from this exact database
+     * and threshold, and saving it there after a scan otherwise.
+     *
+     * @param catalogueCacheDirectory where {@link WaterCatalogueCache} keeps its file, or {@code null}
+     *                                to always scan the database (offline tooling and tests)
+     */
+    public static WaterProvider load(Path database, CacheManager cacheManager, int maxResidentFeatures,
+                                      double minVisibleRiverDischargeCms, Path catalogueCacheDirectory)
+            throws IOException {
         if (maxResidentFeatures <= 0) {
             throw new IllegalArgumentException(
                     "cache.water-feature-cache-entries must be positive: " + maxResidentFeatures);
@@ -64,7 +78,7 @@ public final class SqliteWaterProvider {
         try {
             connection = DriverManager.getConnection(url);
             List<LazySqliteWaterProvider.CatalogEntry> entries =
-                    catalogue(connection, minVisibleRiverDischargeCms);
+                    cachedCatalogue(database, connection, minVisibleRiverDischargeCms, catalogueCacheDirectory);
             if (entries.isEmpty()) {
                 connection.close();
                 return null;
@@ -87,7 +101,33 @@ public final class SqliteWaterProvider {
         }
     }
 
-    /** Reads bounding boxes only -- never the geometry column -- so cataloguing costs milliseconds. */
+    /**
+     * The catalogue from {@link WaterCatalogueCache} when one was saved for this database and
+     * threshold, otherwise from a scan -- which is then saved for the next start. The schema check
+     * runs either way, so a cache can never vouch for a database that would be refused.
+     */
+    private static List<LazySqliteWaterProvider.CatalogEntry> cachedCatalogue(Path database, Connection connection,
+            double minVisibleRiverDischargeCms, Path catalogueCacheDirectory) throws SQLException, IOException {
+        if (catalogueCacheDirectory == null) {
+            return catalogue(connection, minVisibleRiverDischargeCms);
+        }
+        requirePreparedColumns(connection);
+        WaterCatalogueCache cache = new WaterCatalogueCache(catalogueCacheDirectory);
+        WaterCatalogueCache.Key key = WaterCatalogueCache.Key.of(database, minVisibleRiverDischargeCms);
+        Optional<List<LazySqliteWaterProvider.CatalogEntry>> saved = cache.load(key);
+        if (saved.isPresent()) {
+            return saved.get();
+        }
+        List<LazySqliteWaterProvider.CatalogEntry> scanned = catalogue(connection, minVisibleRiverDischargeCms);
+        cache.save(key, scanned);
+        return scanned;
+    }
+
+    /**
+     * Reads bounding boxes and attributes -- never decodes geometry. Note that SQLite still pages
+     * through each row's geometry to reach the attribute columns stored after it, which is why a
+     * large database's catalogue is worth {@link WaterCatalogueCache caching}.
+     */
     private static List<LazySqliteWaterProvider.CatalogEntry> catalogue(Connection connection,
             double minVisibleRiverDischargeCms) throws SQLException, IOException {
         requirePreparedColumns(connection);

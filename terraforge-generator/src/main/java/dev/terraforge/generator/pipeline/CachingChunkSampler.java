@@ -106,7 +106,15 @@ public final class CachingChunkSampler implements ChunkSampler {
             System.arraycopy(grid, (localZ + margin) * width + margin, samples, localZ * ChunkSamples.SIZE,
                     ChunkSamples.SIZE);
         }
-        return new ChunkSamples(chunkX, chunkZ, bounds, samples);
+        // The margin was sampled and shaped anyway; keep what the underground pass needs from it.
+        int[] surfaceY = new int[grid.length];
+        boolean[] water = new boolean[grid.length];
+        for (int i = 0; i < grid.length; i++) {
+            surfaceY[i] = grid[i].surfaceY();
+            water[i] = grid[i].isWater();
+        }
+        return new ChunkSamples(chunkX, chunkZ, bounds, samples,
+                new ChunkSampler.Neighbourhood(margin, surfaceY, water));
     }
 
     /** Chunk coordinates packed into one long, so a lookup costs one boxed key and no record. */

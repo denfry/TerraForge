@@ -63,6 +63,7 @@ import dev.terraforge.plugin.world.WorldCreationCheck;
 import dev.terraforge.towny.SqliteTownGeoService;
 import dev.terraforge.towny.TownGeoListener;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -70,8 +71,16 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import org.bstats.bukkit.Metrics;
 import org.bstats.charts.SimplePie;
 import org.bukkit.event.EventHandler;
@@ -152,6 +161,10 @@ public final class TerraForgePlugin extends JavaPlugin implements Listener {
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
+        // Here, not in onServerLoad: POSTWORLD plugins (Civitas/NewTowny) look these services up in
+        // their own onEnable, which runs before ServerLoadEvent -- registered any later, they are
+        // simply never found. They depend only on the prepared database and the coordinate system.
+        initializeBoundaryServices();
         getServer().getPluginManager().registerEvents(this, this);
         if (config.world().border().enabled()) {
             // Registered before any world loads (load: STARTUP), so WorldLoadEvent draws each border.
@@ -173,7 +186,6 @@ public final class TerraForgePlugin extends JavaPlugin implements Listener {
     @EventHandler
     public void onServerLoad(ServerLoadEvent event) {
         this.integrations = IntegrationStatus.detect(getServer().getPluginManager(), config);
-        initializeBoundaryServices();
         initializeMarkers();
         initializeTownyIntegration();
         initializeBlueMapIntegration();
@@ -198,12 +210,7 @@ public final class TerraForgePlugin extends JavaPlugin implements Listener {
                 .create(config.earth().projection(), config.earth().origin().latitude());
         this.transformer = new CoordinateTransformer(
                 projection, config.earth().originPoint(), config.scale().blocksPerKm());
-        this.verticalScale = new VerticalScale(
-                config.terrain().seaLevel(),
-                config.terrain().minY(),
-                config.terrain().maxY(),
-                config.terrain().verticalExaggeration(),
-                config.terrain().metersPerBlock());
+        this.verticalScale = config.terrain().verticalScale();
         this.cacheManager = new CacheManager(config.cache().memoryLimitMb());
 
         // A world with no prepared DEM still starts: every column falls back to
@@ -211,18 +218,77 @@ public final class TerraForgePlugin extends JavaPlugin implements Listener {
         Path demDirectory = getDataFolder().toPath()
                 .resolve(config.data().dataDirectory())
                 .resolve("dem");
-        try {
-            this.demReader = FileDemReader.open(demDirectory);
-        } catch (IOException e) {
-            throw new IOException("Cannot read DEM directory " + demDirectory + ": " + e.getMessage(), e);
-        }
-        this.elevation = new DemElevationProvider(demReader, cacheManager, config.cache().demTileCacheEntries());
-        this.demCorruptionCache = new DemCorruptionCache(demReader.directory(), this::preparedTileCount);
-        this.demFingerprintCache = new DemFingerprintCache(demReader.directory());
 
-        this.terrain = TerrainStack.create(config, transformer, verticalScale, elevation, cacheManager,
-                loadWaterProvider(), loadLandcoverProvider(), loadKarstProvider());
-        this.boundaries = loadBoundaryIndex();
+        // The five catalogues are independent reads of different files, and against a planet each
+        // is seconds of disk latency: one after another they held the server thread for 28 s. They
+        // still finish before this method returns -- the generator must be whole before any world
+        // loads -- but they now overlap. Only the water fallback needs the DEM, and it waits for it.
+        long started = System.nanoTime();
+        ExecutorService loaders = Executors.newFixedThreadPool(5, loaderThreads());
+        try {
+            CompletableFuture<DemElevationProvider> dem = CompletableFuture.supplyAsync(() -> {
+                try {
+                    this.demReader = FileDemReader.open(demDirectory);
+                } catch (IOException e) {
+                    throw new UncheckedIOException(new IOException(
+                            "Cannot read DEM directory " + demDirectory + ": " + e.getMessage(), e));
+                }
+                return new DemElevationProvider(demReader, cacheManager, config.cache().demTileCacheEntries());
+            }, loaders);
+            CompletableFuture<dev.terraforge.core.data.WaterProvider> water =
+                    CompletableFuture.supplyAsync(() -> loadWaterProvider(dem::join), loaders);
+            CompletableFuture<dev.terraforge.core.data.LandcoverProvider> landcover =
+                    CompletableFuture.supplyAsync(this::loadLandcoverProvider, loaders);
+            CompletableFuture<dev.terraforge.core.data.KarstProvider> karst =
+                    CompletableFuture.supplyAsync(this::loadKarstProvider, loaders);
+            CompletableFuture<SqliteBoundaryIndex> boundaryIndex =
+                    CompletableFuture.supplyAsync(this::loadBoundaryIndex, loaders);
+
+            // Joined in the order they used to run, so the failure reported is the one a sequential
+            // start would have stopped at.
+            this.elevation = await(dem);
+            this.demCorruptionCache = new DemCorruptionCache(demReader.directory(), this::preparedTileCount);
+            this.demFingerprintCache = new DemFingerprintCache(demReader.directory());
+            this.terrain = TerrainStack.create(config, transformer, verticalScale, elevation, cacheManager,
+                    await(water), await(landcover), await(karst));
+            this.boundaries = await(boundaryIndex);
+        } finally {
+            loaders.shutdownNow();
+        }
+        getLogger().info(LOG_PREFIX + "Geodata catalogued in "
+                + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) + " ms.");
+    }
+
+    /** Daemon threads with a recognisable name, so a thread dump taken during startup says whose they are. */
+    private static ThreadFactory loaderThreads() {
+        AtomicInteger sequence = new AtomicInteger();
+        return runnable -> {
+            Thread thread = new Thread(runnable, "TerraForge-Load-" + sequence.incrementAndGet());
+            thread.setDaemon(true);
+            return thread;
+        };
+    }
+
+    /**
+     * The value of a loader, rethrowing what it failed with exactly as a sequential start would
+     * have: an I/O failure as {@link IOException}, anything else as itself.
+     */
+    private static <T> T await(CompletableFuture<T> loader) throws IOException {
+        try {
+            return loader.join();
+        } catch (CompletionException exception) {
+            Throwable cause = exception.getCause();
+            if (cause instanceof UncheckedIOException unchecked) {
+                throw unchecked.getCause();
+            }
+            if (cause instanceof RuntimeException runtime) {
+                throw runtime;
+            }
+            if (cause instanceof Error error) {
+                throw error;
+            }
+            throw new IOException(cause);
+        }
     }
 
     @Override
@@ -309,7 +375,10 @@ public final class TerraForgePlugin extends JavaPlugin implements Listener {
         getLogger().info("Origin:       " + transformer.origin());
         getLogger().info("Vertical:     sea-level " + verticalScale.seaLevel()
                 + ", exaggeration " + verticalScale.verticalExaggeration()
-                + ", " + verticalScale.metersPerBlock() + " m/block");
+                + ", " + verticalScale.metersPerBlock() + " m/block"
+                + (verticalScale.reliefCurveMeters() > 0.0
+                        ? " at sea level, relief curve " + Math.round(verticalScale.reliefCurveMeters()) + " m"
+                        : ""));
         getLogger().info("Relief:       " + verticalScale.earthFit());
         if (verticalScale.flattensRealTerrain()) {
             getLogger().warning(LOG_PREFIX + "This world can show less than "
@@ -318,6 +387,11 @@ public final class TerraForgePlugin extends JavaPlugin implements Listener {
                     + "terrain.meters-per-block, or raise terrain.max-y with a matching dimension "
                     + "type -- see docs/vertical-scale.md. Changing either after chunks exist "
                     + "leaves a permanent seam.");
+        }
+        String legacy = dev.terraforge.plugin.world.LegacyClientFit.warning(verticalScale.minY(),
+                verticalScale.maxY(), getServer().getPluginManager().getPlugin("ViaBackwards") != null);
+        if (legacy != null) {
+            getLogger().warning(LOG_PREFIX + legacy);
         }
         getLogger().info("Test region:  " + config.testRegion().name() + " " + config.testRegion().toBounds());
         getLogger().info("DEM:          " + demSummary());
@@ -331,6 +405,11 @@ public final class TerraForgePlugin extends JavaPlugin implements Listener {
                 + ", vanilla carvers " + onOff(generation.vanillaCaves()));
         getLogger().info("Decorations:  vanilla pass " + onOff(generation.vanillaDecorations())
                 + " (trees, ores, springs and lava lakes together)");
+        var underground = generation.underground();
+        getLogger().info("Underground:  ores " + onOff(underground.ores())
+                + " (x" + underground.oreMultiplier() + "), stone variety " + onOff(underground.stoneVariety())
+                + ", cave systems " + onOff(underground.caves())
+                + (underground.caves() ? " (1 in " + underground.caveRarity() + " chunks)" : ""));
         getLogger().info(line);
     }
 
@@ -608,16 +687,18 @@ public final class TerraForgePlugin extends JavaPlugin implements Listener {
                 + (elevation.hasBathymetry() ? ", with bathymetry" : ", land only");
     }
 
-    private dev.terraforge.core.data.WaterProvider loadWaterProvider() {
+    /** @param elevation the DEM, needed only by the fallback and waited for only when it is used */
+    private dev.terraforge.core.data.WaterProvider loadWaterProvider(
+            Supplier<? extends dev.terraforge.core.data.ElevationProvider> elevation) {
         Path database = preparedDatabasePath();
         if (!Files.isRegularFile(database)) {
             getLogger().info(LOG_PREFIX + "Water: no prepared database; using elevation fallback.");
-            return new dev.terraforge.core.data.SeaLevelWaterProvider(elevation);
+            return new dev.terraforge.core.data.SeaLevelWaterProvider(elevation.get());
         }
         try {
             dev.terraforge.core.data.WaterProvider provider = SqliteWaterProvider.load(
                     database, cacheManager, config.cache().waterFeatureCacheEntries(),
-                    config.water().minVisibleRiverDischargeCms());
+                    config.water().minVisibleRiverDischargeCms(), catalogueCacheDirectory());
             if (provider != null) {
                 this.water = provider;
                 getLogger().info(LOG_PREFIX + "Water: prepared natural water features catalogued; "
@@ -629,7 +710,22 @@ public final class TerraForgePlugin extends JavaPlugin implements Listener {
             getLogger().warning(LOG_PREFIX + "Water: cannot load " + database + ": "
                     + exception.getMessage() + "; using elevation fallback.");
         }
-        return new dev.terraforge.core.data.SeaLevelWaterProvider(elevation);
+        return new dev.terraforge.core.data.SeaLevelWaterProvider(elevation.get());
+    }
+
+    /**
+     * {@code data.cache-directory}, where rebuildable derived files such as the water catalogue are
+     * kept; {@code null} -- no caching, every start scans -- when it would leave the plugin directory.
+     */
+    private Path catalogueCacheDirectory() {
+        Path pluginRoot = getDataFolder().toPath().toAbsolutePath().normalize();
+        Path directory = pluginRoot.resolve(config.data().cacheDirectory()).normalize();
+        if (!directory.startsWith(pluginRoot)) {
+            getLogger().warning(LOG_PREFIX + "data.cache-directory must stay inside the plugin directory; "
+                    + "the water catalogue will not be cached.");
+            return null;
+        }
+        return directory;
     }
 
     private SqliteBoundaryIndex loadBoundaryIndex() {

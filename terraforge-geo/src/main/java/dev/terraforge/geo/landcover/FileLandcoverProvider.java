@@ -5,6 +5,7 @@ import dev.terraforge.core.cache.CacheStatistics;
 import dev.terraforge.core.cache.ManagedCache;
 import dev.terraforge.core.coord.GeoBounds;
 import dev.terraforge.core.data.LandcoverProvider;
+import dev.terraforge.geo.io.ParallelScan;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
@@ -125,16 +126,29 @@ public final class FileLandcoverProvider implements LandcoverProvider, AutoClose
                     .sorted(Comparator.comparing(path -> path.getFileName().toString()))
                     .toList();
         }
+        // Header reads overlap on a small pool; the entries are assembled below in filename order,
+        // so the tie-break between overlapping grids is exactly the sequential one.
+        List<Object> headers = ParallelScan.map(files, FileLandcoverProvider::readHeaderOrFailure);
         List<Entry> entries = new ArrayList<>(files.size());
-        for (Path file : files) {
-            try {
-                entries.add(new Entry(file, LandcoverGridFile.readHeader(file)));
-            } catch (IOException exception) {
+        for (int index = 0; index < files.size(); index++) {
+            Path file = files.get(index);
+            if (headers.get(index) instanceof LandcoverGridFile.Header header) {
+                entries.add(new Entry(file, header));
+            } else {
                 LOG.log(System.Logger.Level.WARNING, "Skipping unreadable land-cover grid {0}: {1}",
-                        file.getFileName(), exception.getMessage());
+                        file.getFileName(), ((IOException) headers.get(index)).getMessage());
             }
         }
         return entries;
+    }
+
+    /** The grid's header, or the {@link IOException} that stopped it being read. */
+    private static Object readHeaderOrFailure(Path file) {
+        try {
+            return LandcoverGridFile.readHeader(file);
+        } catch (IOException exception) {
+            return exception;
+        }
     }
 
     /** Adds an entry to every degree cell it touches, or to the unindexed list when it spans too many. */

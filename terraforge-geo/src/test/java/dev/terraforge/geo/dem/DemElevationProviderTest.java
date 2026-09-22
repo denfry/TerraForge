@@ -153,6 +153,32 @@ class DemElevationProviderTest {
         assertThat(ElevationProvider.isNoData(provider.averageElevationAt(10.5, 20.5, 0.5, 0.5))).isTrue();
     }
 
+    /**
+     * Regression: a world bordered at the pole logged hundreds of "Missing DEM tile: N90..." lines.
+     * {@code floor(90)} is 90, but no tile starts at the pole -- the last row, N89, reaches it.
+     */
+    @Test
+    void aPointOnTheNorthPoleIsReadFromTheLastRowInsteadOfTileN90() throws IOException {
+        writeFlatTile(new DemTileKey(89, 10), 42.0);
+        DemElevationProvider provider = provider();
+
+        assertThat(provider.elevationAt(90.0, 10.5)).isCloseTo(42.0, Offset.offset(1e-6));
+        assertThat(provider.averageElevationAt(89.9999, 10.5, 0.01, 0.01)).isCloseTo(42.0, Offset.offset(1e-6));
+        assertThat(provider.hasCoverage(90.0, 10.5)).isTrue();
+        assertThat(provider.missingTiles()).noneMatch(key -> key.latDegree() > 89);
+    }
+
+    /** Same regression on the antimeridian: longitude 180 closes column E179, it opens no E180. */
+    @Test
+    void aPointOnTheAntimeridianIsReadFromTheLastColumnInsteadOfTileE180() throws IOException {
+        writeFlatTile(new DemTileKey(10, 179), 17.0);
+        DemElevationProvider provider = provider();
+
+        assertThat(provider.elevationAt(10.5, 180.0)).isCloseTo(17.0, Offset.offset(1e-6));
+        assertThat(provider.averageElevationAt(10.5, 179.9999, 0.01, 0.01)).isCloseTo(17.0, Offset.offset(1e-6));
+        assertThat(provider.missingTiles()).noneMatch(key -> key.lonDegree() > 179 || key.lonDegree() < -180);
+    }
+
     /** A fresh manager per provider: cache names are registered once, and tests build several. */
     private DemElevationProvider provider() throws IOException {
         return new DemElevationProvider(FileDemReader.open(demDirectory), new CacheManager(64), 16);

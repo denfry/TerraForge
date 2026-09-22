@@ -115,6 +115,18 @@ public record TerraForgeConfig(
      *                             it, which is a deterministic box filter over the height field and
      *                             the difference between a walkable plain and one-block noise at a
      *                             kilometre per block. Absent or zero means the default.
+     * @param reliefCurveMeters    knee of the relief curve, in metres; {@code metersPerBlock} holds at
+     *                             sea level and each block covers {@code 1 + elevation / knee} times
+     *                             more with altitude, so mountains keep mountain slopes instead of
+     *                             turning into spikes. Absent or zero keeps the scale linear. See
+     *                             {@link dev.terraforge.core.terrain.VerticalScale}.
+     * @param generatedMinY        lowest Y terrain is generated at; the bedrock starts here and the
+     *                             world below it stays empty. Absent means {@code minY}.
+     * @param generatedMaxY        one above the highest Y terrain may reach. Absent means {@code maxY}.
+     *                             Together with {@code generatedMinY} this keeps the planet inside a
+     *                             band -- 0..256 is what a 1.16 client can see -- while the world keeps
+     *                             vanilla's height, so no datapack has to change the overworld's height
+     *                             for every other world on the server.
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record TerrainSection(
@@ -125,7 +137,10 @@ public record TerraForgeConfig(
             double metersPerBlock,
             double fallbackElevation,
             int bedrockThickness,
-            double smoothing) {
+            double smoothing,
+            double reliefCurveMeters,
+            Integer generatedMinY,
+            Integer generatedMaxY) {
 
         public static final double DEFAULT_SMOOTHING = 3.0;
 
@@ -134,6 +149,34 @@ public record TerraForgeConfig(
             if (smoothing == 0.0 || Double.isNaN(smoothing)) {
                 smoothing = DEFAULT_SMOOTHING;
             }
+            if (generatedMinY == null) {
+                generatedMinY = minY;
+            }
+            if (generatedMaxY == null) {
+                generatedMaxY = maxY;
+            }
+        }
+
+        /** Terrain over the whole world height. */
+        public TerrainSection(int seaLevel, int minY, int maxY, double verticalExaggeration,
+                              double metersPerBlock, double fallbackElevation, int bedrockThickness,
+                              double smoothing, double reliefCurveMeters) {
+            this(seaLevel, minY, maxY, verticalExaggeration, metersPerBlock, fallbackElevation,
+                    bedrockThickness, smoothing, reliefCurveMeters, null, null);
+        }
+
+        /** A linear vertical scale over the whole world height. */
+        public TerrainSection(int seaLevel, int minY, int maxY, double verticalExaggeration,
+                              double metersPerBlock, double fallbackElevation, int bedrockThickness,
+                              double smoothing) {
+            this(seaLevel, minY, maxY, verticalExaggeration, metersPerBlock, fallbackElevation,
+                    bedrockThickness, smoothing, 0.0);
+        }
+
+        /** The vertical scale these settings describe, over the band terrain is generated in. */
+        public dev.terraforge.core.terrain.VerticalScale verticalScale() {
+            return new dev.terraforge.core.terrain.VerticalScale(seaLevel, generatedMinY, generatedMaxY,
+                    verticalExaggeration, metersPerBlock, reliefCurveMeters);
         }
     }
 
@@ -222,16 +265,76 @@ public record TerraForgeConfig(
      *                          from real land cover and climate, in this world's vertical frame,
      *                          with none of vanilla's ore veins, lava lakes or springs. Absent
      *                          means enabled at full density.
+     * @param underground       TerraForge's own ores, stone variety and cave systems, placed in this
+     *                          world's vertical frame while the chunk is generated. Absent means all on.
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record GenerationSection(boolean naturalOnly, boolean caves, boolean vanillaCaves,
                                     boolean vanillaDecorations, boolean manMadeStructures,
-                                    int workerThreads, VegetationSection vegetation) {
+                                    int workerThreads, VegetationSection vegetation,
+                                    UndergroundSection underground) {
 
         public GenerationSection {
             if (vegetation == null) {
                 vegetation = VegetationSection.defaults();
             }
+            if (underground == null) {
+                underground = UndergroundSection.defaults();
+            }
+        }
+
+        /** Without an underground section: every underground pass on. */
+        public GenerationSection(boolean naturalOnly, boolean caves, boolean vanillaCaves,
+                                 boolean vanillaDecorations, boolean manMadeStructures,
+                                 int workerThreads, VegetationSection vegetation) {
+            this(naturalOnly, caves, vanillaCaves, vanillaDecorations, manMadeStructures, workerThreads,
+                    vegetation, UndergroundSection.defaults());
+        }
+    }
+
+    /**
+     * What lies under the ground, generated with the chunk rather than patched in afterwards.
+     *
+     * <p>Every height is anchored to this world's sea level and floor, not to vanilla's y=-64..63,
+     * so the same ore band sits at the same depth below the sea whatever {@code terrain.*} says.
+     *
+     * @param ores          coal, iron, copper, gold, redstone, lapis, diamond and emerald veins
+     * @param oreMultiplier multiplier on every ore vein count; {@code 1.0} is vanilla 1.16's density
+     * @param stoneVariety  dirt, gravel, granite, diorite, andesite, tuff and blackstone pockets
+     * @param caves         winding cave systems everywhere under land, never under water. Unrelated to
+     *                      {@code generation.caves}, which is the karst carver.
+     * @param caveRarity    one cave system starts in one chunk of this many; vanilla 1.16 is 7, lower
+     *                      means more caves
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record UndergroundSection(Boolean ores, Double oreMultiplier, Boolean stoneVariety,
+                                     Boolean caves, Double caveRarity) {
+
+        public UndergroundSection {
+            if (ores == null) {
+                ores = Boolean.TRUE;
+            }
+            if (oreMultiplier == null) {
+                oreMultiplier = 1.0;
+            }
+            if (stoneVariety == null) {
+                stoneVariety = Boolean.TRUE;
+            }
+            if (caves == null) {
+                caves = Boolean.TRUE;
+            }
+            if (caveRarity == null) {
+                caveRarity = 7.0;
+            }
+        }
+
+        public static UndergroundSection defaults() {
+            return new UndergroundSection(true, 1.0, true, true, 7.0);
+        }
+
+        /** Nothing under the ground but stone: the behaviour before the underground pass existed. */
+        public static UndergroundSection off() {
+            return new UndergroundSection(false, 1.0, false, false, 7.0);
         }
     }
 
@@ -244,9 +347,15 @@ public record TerraForgeConfig(
      *                    the steppe, fallen logs in the forest -- alongside vanilla's. Absent means on.
      * @param farmland    turn flat cropland into tilled fields of wheat, carrots, potatoes, beetroot,
      *                    pumpkins and melons with irrigation channels. Absent means on.
+     * @param farmlandShare share of flat cropland that is tilled, {@code 0..1}; the rest stays meadow.
+     *                    At a kilometre per block WorldCover's cropland covers whole regions, and
+     *                    tilling all of it turned Europe into one allotment. Absent means 0.25.
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record VegetationSection(boolean enabled, double density, Boolean customTrees, Boolean farmland) {
+    public record VegetationSection(boolean enabled, double density, Boolean customTrees, Boolean farmland,
+                                    Double farmlandShare) {
+
+        public static final double DEFAULT_FARMLAND_SHARE = 0.25;
 
         public VegetationSection {
             if (density == 0.0 || Double.isNaN(density)) {
@@ -258,10 +367,18 @@ public record TerraForgeConfig(
             if (farmland == null) {
                 farmland = Boolean.TRUE;
             }
+            if (farmlandShare == null || Double.isNaN(farmlandShare)) {
+                farmlandShare = DEFAULT_FARMLAND_SHARE;
+            }
+        }
+
+        /** Without a farmland share: the default share. */
+        public VegetationSection(boolean enabled, double density, Boolean customTrees, Boolean farmland) {
+            this(enabled, density, customTrees, farmland, null);
         }
 
         public static VegetationSection defaults() {
-            return new VegetationSection(true, 1.0, true, true);
+            return new VegetationSection(true, 1.0, true, true, DEFAULT_FARMLAND_SHARE);
         }
     }
 

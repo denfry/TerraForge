@@ -8,7 +8,16 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.TreeMap;
 
-/** Renders the strictly limited datapack needed to override overworld height. */
+/**
+ * Renders the strictly limited datapack needed to override overworld height.
+ *
+ * <p>Every field but the height mirrors vanilla 1.21.8's {@code overworld.json}, {@code cloud_height}
+ * included: the type replaces the overworld's for every overworld-type world on the server, and a type
+ * without {@code cloud_height} renders no clouds at all -- which is how the first version of this pack
+ * removed the clouds from every such world, a Multiverse spawn world included. A pack staged by that
+ * version still verifies: the bootstrap checks the files on disk against the manifest's own
+ * fingerprint, not against today's rendering.
+ */
 public final class TerraForgeDatapack {
     public static final int PACK_FORMAT = 81;
     private TerraForgeDatapack() {}
@@ -17,7 +26,7 @@ public final class TerraForgeDatapack {
         if (profile == null) throw new IllegalArgumentException("vertical profile must be present");
         Map<String, byte[]> files = new LinkedHashMap<>();
         files.put("pack.mcmeta", ("{\n  \"pack\": {\n    \"pack_format\": " + PACK_FORMAT + ",\n    \"description\": \"TerraForge world height: " + profile.minY() + ".." + profile.maxY() + "\"\n  }\n}\n").getBytes(StandardCharsets.UTF_8));
-        files.put("data/minecraft/dimension_type/overworld.json", ("{\n  \"ultrawarm\": false,\n  \"natural\": true,\n  \"piglin_safe\": false,\n  \"respawn_anchor_works\": false,\n  \"bed_works\": true,\n  \"has_raids\": true,\n  \"has_skylight\": true,\n  \"has_ceiling\": false,\n  \"coordinate_scale\": 1.0,\n  \"ambient_light\": 0.0,\n  \"logical_height\": " + profile.height() + ",\n  \"effects\": \"minecraft:overworld\",\n  \"infiniburn\": \"#minecraft:infiniburn_overworld\",\n  \"min_y\": " + profile.minY() + ",\n  \"height\": " + profile.height() + ",\n  \"monster_spawn_block_light_limit\": 0,\n  \"monster_spawn_light_level\": {\n    \"type\": \"minecraft:uniform\",\n    \"max_inclusive\": 7,\n    \"min_inclusive\": 0\n  }\n}\n").getBytes(StandardCharsets.UTF_8));
+        files.put("data/minecraft/dimension_type/overworld.json", ("{\n  \"ultrawarm\": false,\n  \"natural\": true,\n  \"piglin_safe\": false,\n  \"respawn_anchor_works\": false,\n  \"bed_works\": true,\n  \"cloud_height\": 192,\n  \"has_raids\": true,\n  \"has_skylight\": true,\n  \"has_ceiling\": false,\n  \"coordinate_scale\": 1.0,\n  \"ambient_light\": 0.0,\n  \"logical_height\": " + profile.height() + ",\n  \"effects\": \"minecraft:overworld\",\n  \"infiniburn\": \"#minecraft:infiniburn_overworld\",\n  \"min_y\": " + profile.minY() + ",\n  \"height\": " + profile.height() + ",\n  \"monster_spawn_block_light_limit\": 0,\n  \"monster_spawn_light_level\": {\n    \"type\": \"minecraft:uniform\",\n    \"max_inclusive\": 7,\n    \"min_inclusive\": 0\n  }\n}\n").getBytes(StandardCharsets.UTF_8));
         return new RenderedPack(files, fingerprint(files));
     }
 

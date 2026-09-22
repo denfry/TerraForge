@@ -109,10 +109,14 @@ public final class DemElevationProvider implements ElevationProvider {
         // the overwhelming majority of columns and at most four at a tile corner. Walking the tiles
         // is also what finally makes the average correct across a tile border: a single tile clamps
         // its own edge and would otherwise average a duplicated line of samples.
-        int lastLatDegree = (int) Math.floor(maxLatitude);
-        int lastLonDegree = (int) Math.floor(maxLongitude);
-        for (int latDegree = (int) Math.floor(minLatitude); latDegree <= lastLatDegree; latDegree++) {
-            for (int lonDegree = (int) Math.floor(minLongitude); lonDegree <= lastLonDegree; lonDegree++) {
+        // Clamped into the grid for the same reason as DemTileKey.of: a footprint touching the pole
+        // or the antimeridian ends at the last row or column, it does not open a nonexistent one.
+        int firstLatDegree = DemTileKey.clampLatDegree((int) Math.floor(minLatitude));
+        int lastLatDegree = DemTileKey.clampLatDegree((int) Math.floor(maxLatitude));
+        int firstLonDegree = DemTileKey.clampLonDegree((int) Math.floor(minLongitude));
+        int lastLonDegree = DemTileKey.clampLonDegree((int) Math.floor(maxLongitude));
+        for (int latDegree = firstLatDegree; latDegree <= lastLatDegree; latDegree++) {
+            for (int lonDegree = firstLonDegree; lonDegree <= lastLonDegree; lonDegree++) {
                 Optional<DemTile> tile = tiles.get(new DemTileKey(latDegree, lonDegree), this::load);
                 if (tile.isEmpty()) {
                     continue;

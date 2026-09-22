@@ -34,8 +34,18 @@ earth:
 
 terrain:
   sea-level: 63
+  # The world's height. -64..320 is vanilla's and needs no datapack; anything else makes TerraForge
+  # stage a datapack that changes the height of EVERY overworld-type world on the server -- a spawn
+  # or lobby world loaded by Multiverse included, whose blocks outside the new range are lost.
   min-y: -64
   max-y: 320
+
+  # Optional band terrain is generated in, inside min-y..max-y. The bedrock starts at
+  # generated-min-y and the world below it stays empty. 0..256 is exactly what a 1.16 client can
+  # see, so with ViaBackwards installed use generated-min-y: 0 and generated-max-y: 256 and keep the
+  # vanilla world height above. Absent means the whole world height.
+  # generated-min-y: 0
+  # generated-max-y: 256
 
   # Real elevation is multiplied by this before being converted to Y.
   # Supported: 0.5, 1.0, 1.5, 2.0, 3.0
@@ -55,6 +65,13 @@ terrain:
   # box filter over the height field, seamless across chunks, and the difference between walkable
   # ground and one-block noise at a kilometre per block. Raise to 5.0 for gentler terrain still.
   smoothing: 3.0
+
+  # Relief curve knee in metres; 0 keeps the vertical scale linear. With a knee, meters-per-block
+  # holds at sea level and each block covers (1 + elevation / knee) times more with altitude, so
+  # lowlands keep their hills while mountain ranges get mountain slopes instead of single-column
+  # spikes -- at a kilometre per block horizontally, a linear scale that shows a 200 m hill turns
+  # the Alps into walls. 1300 with meters-per-block 15 fits Everest into a 256-block band.
+  relief-curve-meters: 0
 
 water:
   oceans: true
@@ -130,6 +147,26 @@ generation:
     # Flat cropland becomes tilled fields: wheat, carrots, potatoes, beetroot, pumpkins and melons in
     # one-crop plots with irrigation channels. Sloping cropland stays meadow.
     farmland: true
+    # Share of flat cropland that is tilled (0..1); the rest stays meadow. At a kilometre per block
+    # real cropland covers whole regions, so tilling all of it makes an endless allotment.
+    farmland-share: 0.25
+
+  # What lies under the ground, generated with the chunk on the generation threads -- never patched
+  # into a live world afterwards. Heights follow this world's sea level and floor, not vanilla's, so
+  # diamonds sit the same depth below the sea whatever terrain.* says. Ores are 1.16's (plus copper),
+  # never deepslate variants, so players on old clients through ViaBackwards see every ore.
+  underground:
+    # Coal, iron, copper, gold, redstone, lapis, diamond, and emerald under high mountains.
+    ores: true
+    # Multiplier on every ore vein count. 1.0 is vanilla 1.16's density.
+    ore-multiplier: 1.0
+    # Dirt, gravel, granite, diorite, andesite, tuff and (near the bedrock) blackstone pockets.
+    stone-variety: true
+    # Winding cave systems under land. They stay a few blocks below the ground and never reach under
+    # water, so they cannot drain a lake or open the seabed. Unrelated to generation.caves above.
+    caves: true
+    # One cave system starts in one chunk of this many. Vanilla 1.16 is 7; lower means more caves.
+    cave-rarity: 7.0
 
 pregeneration:
   # Never permit an unbounded async queue; one chunk is the safe default.

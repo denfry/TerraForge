@@ -61,6 +61,22 @@ uncompressed, `--min-y -576 --max-y 448` is the same 1,024 blocks shifted down.
 Leave `vertical-exaggeration` at `1.0`. It multiplies elevation before the conversion to blocks, so
 it works directly against fitting Earth into the world.
 
+## Old clients, and other worlds on the server
+
+A 1.16 client knows one world height, y 0..255. ViaBackwards lets such a client join a 1.21.8
+server, but it can only drop what lies outside that range: below y=0 the client sees void. If your
+server admits old clients, the terrain must live in 0..255 -- and the way to do that is **not** to
+shrink the world. Keep the vanilla `min-y: -64`, `max-y: 320`, and set `generated-min-y: 0`,
+`generated-max-y: 256`: the bedrock sits at y=0, the world below it stays empty, and no datapack is
+needed.
+
+The reason is the next section. The height datapack replaces the overworld dimension type, and
+every overworld-type world on the server shares it -- a Multiverse spawn or lobby world included.
+Shrink the overworld and that world loses whatever it had outside the new range; grow it and the
+world's old chunks come back with a changed frame. A band inside the vanilla height touches nobody
+else. `meters-per-block: 15` with `relief-curve-meters: 1300` fits the whole Earth into such a band
+with lowland hills intact; see [configuration.md](configuration.md#terrain).
+
 ## The datapack
 
 World height belongs to the dimension type, which Minecraft reads from a datapack before any plugin
@@ -75,7 +91,13 @@ the live `terraforge.yml` and stages it directly into `world/earth/datapacks/ter
 as part of the staging transaction described in [installation.md](installation.md), and the restart
 that follows is what makes Paper pick it up. It overrides `minecraft:overworld` rather than adding a
 dimension, because the world TerraForge generates *is* the overworld; every other value in it is
-vanilla's, so nothing but the height changes.
+vanilla 1.21.8's, `cloud_height: 192` included, so nothing but the height changes. (Packs staged
+before this was fixed omit `cloud_height`, which removes the clouds from every overworld-type world;
+they still verify, and re-staging writes the corrected pack.)
+
+Because the overridden type is shared, a height pack affects **every** overworld-type world on the
+server, not just `earth`. See the previous section before staging one on a server with a spawn or
+lobby world.
 
 Manual copying is a fallback only for building or inspecting a world outside the managed workflow
 (for example, a throwaway local test world); the primary `earth` world must go through

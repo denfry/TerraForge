@@ -9,6 +9,7 @@ import dev.terraforge.generator.biome.BiomeMapper;
 import dev.terraforge.generator.pipeline.ChunkSampler;
 import dev.terraforge.generator.pipeline.TerrainPipeline;
 import dev.terraforge.generator.surface.SurfacePalette;
+import dev.terraforge.generator.underground.UndergroundGenerator;
 import dev.terraforge.generator.vegetation.VegetationPlan;
 import dev.terraforge.generator.vegetation.VegetationPopulator;
 import java.util.List;
@@ -18,6 +19,7 @@ import org.bukkit.HeightMap;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
+import org.bukkit.block.data.BlockData;
 import org.bukkit.generator.BiomeProvider;
 import org.bukkit.generator.BlockPopulator;
 import org.bukkit.generator.ChunkGenerator;
@@ -68,6 +70,12 @@ public final class TerraForgeChunkGenerator extends ChunkGenerator {
     private final Features features;
     private final KarstCaveCarver caveCarver;
 
+    /** Ores, stone pockets and cave systems ({@code generation.underground}); {@code null} when all off. */
+    private final UndergroundGenerator underground;
+
+    /** One shared block state per material the underground pass writes, created on first use. */
+    private volatile java.util.Map<Material, BlockData> undergroundPalette;
+
     /** The planet's edge when {@code world.border} is on; {@code null} generates without end. */
     private final WorldExtent extent;
 
@@ -88,6 +96,9 @@ public final class TerraForgeChunkGenerator extends ChunkGenerator {
         this.bedrockThickness = Math.max(1, bedrockThickness);
         this.features = features;
         this.caveCarver = features.karstCaves() ? new KarstCaveCarver(transformer, karst, pipeline) : null;
+        UndergroundGenerator below = new UndergroundGenerator(features.underground(),
+                verticalScale.minY() + this.bedrockThickness, verticalScale.seaLevel(), verticalScale.maxY());
+        this.underground = below.enabled() ? below : null;
         String warning = vanillaFrameWarning(verticalScale, features);
         if (warning != null && VANILLA_FRAME_WARNED.compareAndSet(false, true)) {
             LOG.log(System.Logger.Level.WARNING, warning);
@@ -138,8 +149,9 @@ public final class TerraForgeChunkGenerator extends ChunkGenerator {
             return;
         }
         ChunkSampler.ChunkSamples samples = pipeline.sampleChunk(chunkX, chunkZ);
-        int floor = chunk.getMinHeight() + bedrockThickness;
-        int ceiling = chunk.getMaxHeight() - 1;
+        int base = base(chunk);
+        int floor = base + bedrockThickness;
+        int ceiling = top(chunk) - 1;
 
         // Paper promises an empty ChunkData when shouldGenerateNoise() is false. Leaf's generation
         // pipeline can still hand us prefilled vanilla noise for a newly-created Multiverse world;
@@ -158,7 +170,7 @@ public final class TerraForgeChunkGenerator extends ChunkGenerator {
                 TerrainSample sample = samples.at(localX, localZ);
                 int surfaceY = Math.clamp(sample.surfaceY(), floor, ceiling);
 
-                chunk.setRegion(localX, chunk.getMinHeight(), localZ,
+                chunk.setRegion(localX, base, localZ,
                         localX + 1, floor, localZ + 1, Material.STONE);
                 chunk.setRegion(localX, floor, localZ, localX + 1, surfaceY + 1, localZ + 1, Material.STONE);
 
@@ -179,8 +191,8 @@ public final class TerraForgeChunkGenerator extends ChunkGenerator {
             return;
         }
         ChunkSampler.ChunkSamples samples = pipeline.sampleChunk(chunkX, chunkZ);
-        int floor = chunk.getMinHeight() + bedrockThickness;
-        int ceiling = chunk.getMaxHeight() - 1;
+        int floor = base(chunk) + bedrockThickness;
+        int ceiling = top(chunk) - 1;
 
         for (int localZ = 0; localZ < ChunkSampler.ChunkSamples.SIZE; localZ++) {
             for (int localX = 0; localX < ChunkSampler.ChunkSamples.SIZE; localX++) {
@@ -204,8 +216,21 @@ public final class TerraForgeChunkGenerator extends ChunkGenerator {
         if (beyondEdge(chunkX, chunkZ)) {
             return;
         }
-        chunk.setRegion(0, chunk.getMinHeight(), 0, 16, chunk.getMinHeight() + bedrockThickness, 16,
-                Material.BEDROCK);
+        int base = base(chunk);
+        chunk.setRegion(0, base, 0, 16, base + bedrockThickness, 16, Material.BEDROCK);
+    }
+
+    /**
+     * Lowest Y of the terrain: the world floor, or {@code terrain.generated-min-y} when the terrain is
+     * kept to a band. Everything below it stays air -- behind the bedrock, where no player reaches.
+     */
+    private int base(ChunkData chunk) {
+        return Math.max(chunk.getMinHeight(), verticalScale.minY());
+    }
+
+    /** One above the highest Y the terrain may reach. */
+    private int top(ChunkData chunk) {
+        return Math.min(chunk.getMaxHeight(), verticalScale.maxY());
     }
 
     @Override
@@ -281,12 +306,48 @@ public final class TerraForgeChunkGenerator extends ChunkGenerator {
         return features.vanillaCaves();
     }
 
-    /** TerraForge's karst caves. Geographic coordinates only; the supplied vanilla random is ignored. */
+    /**
+     * TerraForge's underground -- stone pockets, cave systems and ore veins -- then its karst caves.
+     * Geographic and block coordinates only; the supplied vanilla random is ignored.
+     *
+     * <p>The last stage that writes {@code ChunkData}, so the stone laid by {@link #generateNoise} and
+     * the soil laid by {@link #generateSurface} are both final here, and the underground model built
+     * from the samples matches the chunk block for block.
+     */
     @Override
     public void generateCaves(WorldInfo worldInfo, Random random, int chunkX, int chunkZ, ChunkData chunk) {
-        if (caveCarver != null && !beyondEdge(chunkX, chunkZ)) {
-            caveCarver.carve(chunkX, chunkZ, chunk);
+        if (beyondEdge(chunkX, chunkZ)) {
+            return;
         }
+        if (underground != null) {
+            java.util.Map<Material, BlockData> palette = palette();
+            underground.generate(pipeline.sampleChunk(chunkX, chunkZ),
+                    base(chunk) + bedrockThickness, top(chunk) - 1,
+                    (x, y, z, material) -> chunk.setBlock(x, y, z, palette.get(material)));
+        }
+        if (caveCarver != null) {
+            caveCarver.carve(chunkX, chunkZ, chunk, base(chunk));
+        }
+    }
+
+    /**
+     * {@code ChunkData.setBlock(Material)} creates a fresh block state for every call; thousands of
+     * blocks a chunk make that the pass's largest cost. One immutable state per material is shared
+     * instead. Built lazily because block states need a running server; a benign race builds it twice.
+     */
+    private java.util.Map<Material, BlockData> palette() {
+        java.util.Map<Material, BlockData> palette = undergroundPalette;
+        if (palette == null) {
+            java.util.Map<Material, BlockData> built = new java.util.EnumMap<>(Material.class);
+            built.put(Material.CAVE_AIR, Material.CAVE_AIR.createBlockData());
+            for (dev.terraforge.generator.underground.Mineral mineral
+                    : dev.terraforge.generator.underground.Mineral.values()) {
+                built.put(mineral.material(), mineral.material().createBlockData());
+            }
+            palette = java.util.Collections.unmodifiableMap(built);
+            undergroundPalette = palette;
+        }
+        return palette;
     }
 
     /**
@@ -314,7 +375,8 @@ public final class TerraForgeChunkGenerator extends ChunkGenerator {
             return List.of();
         }
         BlockPopulator vegetation = new VegetationPopulator(pipeline,
-                new VegetationPlan(features.vegetationDensity(), features.customTrees(), features.farmland()));
+                new VegetationPlan(features.vegetationDensity(), features.customTrees(), features.farmland(),
+                        features.farmlandShare()));
         if (extent == null) {
             return List.of(vegetation);
         }
@@ -373,20 +435,38 @@ public final class TerraForgeChunkGenerator extends ChunkGenerator {
      * @param vegetationDensity  multiplier on its placement probabilities ({@code generation.vegetation.density})
      * @param customTrees        draw TerraForge's procedural trees ({@code generation.vegetation.custom-trees})
      * @param farmland           till flat cropland into fields ({@code generation.vegetation.farmland})
+     * @param underground        ores, stone pockets and cave systems ({@code generation.underground})
+     * @param farmlandShare      share of flat cropland tilled ({@code generation.vegetation.farmland-share})
      */
     public record Features(boolean karstCaves, boolean vanillaCaves, boolean vanillaDecorations,
-                           boolean vegetation, double vegetationDensity, boolean customTrees, boolean farmland) {
+                           boolean vegetation, double vegetationDensity, boolean customTrees, boolean farmland,
+                           dev.terraforge.core.config.TerraForgeConfig.UndergroundSection underground,
+                           double farmlandShare) {
 
-        /** The three vanilla-frame switches only; no TerraForge vegetation. */
+        public Features {
+            if (underground == null) {
+                underground = dev.terraforge.core.config.TerraForgeConfig.UndergroundSection.off();
+            }
+        }
+
+        /** No underground pass: stone all the way down; every flat cropland field tilled. */
+        public Features(boolean karstCaves, boolean vanillaCaves, boolean vanillaDecorations,
+                        boolean vegetation, double vegetationDensity, boolean customTrees, boolean farmland) {
+            this(karstCaves, vanillaCaves, vanillaDecorations, vegetation, vegetationDensity, customTrees,
+                    farmland, null, 1.0);
+        }
+
+        /** The three vanilla-frame switches only; no TerraForge vegetation or underground. */
         public Features(boolean karstCaves, boolean vanillaCaves, boolean vanillaDecorations) {
-            this(karstCaves, vanillaCaves, vanillaDecorations, false, 1.0, false, false);
+            this(karstCaves, vanillaCaves, vanillaDecorations, false, 1.0, false, false, null, 1.0);
         }
 
         public static Features from(dev.terraforge.core.config.TerraForgeConfig.GenerationSection generation) {
             var vegetation = generation.vegetation();
             return new Features(generation.caves(), generation.vanillaCaves(),
                     generation.vanillaDecorations(), vegetation.enabled(), vegetation.density(),
-                    vegetation.customTrees(), vegetation.farmland());
+                    vegetation.customTrees(), vegetation.farmland(), generation.underground(),
+                    vegetation.farmlandShare());
         }
     }
 }

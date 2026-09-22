@@ -75,6 +75,13 @@ public final class ConfigLoader {
         require(terrain.bedrockThickness() >= 0, "terrain.bedrock-thickness must not be negative");
         require(terrain.smoothing() >= 1.0 && Double.isFinite(terrain.smoothing()),
                 "terrain.smoothing must be at least 1.0 (1.0 averages only the block's own ground)");
+        require(terrain.generatedMinY() >= terrain.minY() && terrain.generatedMaxY() <= terrain.maxY()
+                        && terrain.generatedMinY() < terrain.generatedMaxY(),
+                "terrain.generated-min-y..generated-max-y must lie inside terrain.min-y..max-y");
+        require(terrain.seaLevel() > terrain.generatedMinY() && terrain.seaLevel() < terrain.generatedMaxY(),
+                "terrain.sea-level must lie between terrain.generated-min-y and terrain.generated-max-y");
+        require(terrain.reliefCurveMeters() >= 0.0 && Double.isFinite(terrain.reliefCurveMeters()),
+                "terrain.relief-curve-meters must not be negative (0 keeps the vertical scale linear)");
 
         require(config.water().minLakeDepthBlocks() >= 1 && config.water().minRiverDepthBlocks() >= 1
                         && config.water().minOceanDepthBlocks() >= 1,
@@ -86,6 +93,14 @@ public final class ConfigLoader {
         require(config.generation().vegetation().density() >= 0.0
                         && Double.isFinite(config.generation().vegetation().density()),
                 "generation.vegetation.density must not be negative");
+        double farmlandShare = config.generation().vegetation().farmlandShare();
+        require(farmlandShare >= 0.0 && farmlandShare <= 1.0,
+                "generation.vegetation.farmland-share must be between 0 and 1");
+        TerraForgeConfig.UndergroundSection underground = config.generation().underground();
+        require(underground.oreMultiplier() >= 0.0 && Double.isFinite(underground.oreMultiplier()),
+                "generation.underground.ore-multiplier must not be negative");
+        require(underground.caveRarity() >= 1.0 && Double.isFinite(underground.caveRarity()),
+                "generation.underground.cave-rarity must be at least 1");
 
         TerraForgeConfig.PregenerationSection pregeneration = config.pregeneration();
         require(pregeneration != null, "pregeneration section must be present");
