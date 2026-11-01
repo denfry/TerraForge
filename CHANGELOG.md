@@ -30,6 +30,10 @@ not optional:
 
 ### Added
 
+- Finer vegetation controls, all off by default: `reed-density`, `dead-bush-density`,
+  `plants-on-sand`, extra dark oaks per chunk (`dark-oak.*`), cocoa on jungle trunks (`cocoa.*`),
+  dense kelp patches and a limit on stalk length (`kelp.*`).
+- `generation.underground.emerald-multiplier`: emerald on its own, on top of `ore-multiplier`.
 - `generation.underground`: ores, stone pockets and cave systems, generated with the chunk on the
   generation threads and written to it once -- never patched into a live world. Vanilla 1.16's ore
   table (coal, iron, gold, redstone, lapis, diamond, emerald under mountains) plus copper, kept at

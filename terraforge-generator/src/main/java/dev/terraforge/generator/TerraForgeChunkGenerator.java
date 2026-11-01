@@ -10,6 +10,8 @@ import dev.terraforge.generator.pipeline.ChunkSampler;
 import dev.terraforge.generator.pipeline.TerrainPipeline;
 import dev.terraforge.generator.surface.SurfacePalette;
 import dev.terraforge.generator.underground.UndergroundGenerator;
+import dev.terraforge.generator.vegetation.ChunkFlora;
+import dev.terraforge.generator.vegetation.KelpLimit;
 import dev.terraforge.generator.vegetation.VegetationPlan;
 import dev.terraforge.generator.vegetation.VegetationPopulator;
 import java.util.List;
@@ -374,9 +376,14 @@ public final class TerraForgeChunkGenerator extends ChunkGenerator {
         if (!features.vegetation()) {
             return List.of();
         }
+        var flora = features.flora();
+        KelpLimit kelpLimit = new KelpLimit(flora.kelp().lengthFraction(), flora.kelp().maxHeight());
+        ChunkFlora extras = new ChunkFlora(flora.darkOak(), flora.cocoa(), flora.kelp());
         BlockPopulator vegetation = new VegetationPopulator(pipeline,
                 new VegetationPlan(features.vegetationDensity(), features.customTrees(), features.farmland(),
-                        features.farmlandShare()));
+                        features.farmlandShare(), flora.reedDensity(), flora.deadBushDensity(),
+                        flora.plantsOnSand(), kelpLimit),
+                extras.enabled() ? extras : null);
         if (extent == null) {
             return List.of(vegetation);
         }
@@ -437,15 +444,20 @@ public final class TerraForgeChunkGenerator extends ChunkGenerator {
      * @param farmland           till flat cropland into fields ({@code generation.vegetation.farmland})
      * @param underground        ores, stone pockets and cave systems ({@code generation.underground})
      * @param farmlandShare      share of flat cropland tilled ({@code generation.vegetation.farmland-share})
+     * @param flora              the finer vegetation controls ({@code generation.vegetation})
      */
     public record Features(boolean karstCaves, boolean vanillaCaves, boolean vanillaDecorations,
                            boolean vegetation, double vegetationDensity, boolean customTrees, boolean farmland,
                            dev.terraforge.core.config.TerraForgeConfig.UndergroundSection underground,
-                           double farmlandShare) {
+                           double farmlandShare,
+                           dev.terraforge.core.config.TerraForgeConfig.VegetationSection flora) {
 
         public Features {
             if (underground == null) {
                 underground = dev.terraforge.core.config.TerraForgeConfig.UndergroundSection.off();
+            }
+            if (flora == null) {
+                flora = dev.terraforge.core.config.TerraForgeConfig.VegetationSection.defaults();
             }
         }
 
@@ -453,12 +465,12 @@ public final class TerraForgeChunkGenerator extends ChunkGenerator {
         public Features(boolean karstCaves, boolean vanillaCaves, boolean vanillaDecorations,
                         boolean vegetation, double vegetationDensity, boolean customTrees, boolean farmland) {
             this(karstCaves, vanillaCaves, vanillaDecorations, vegetation, vegetationDensity, customTrees,
-                    farmland, null, 1.0);
+                    farmland, null, 1.0, null);
         }
 
         /** The three vanilla-frame switches only; no TerraForge vegetation or underground. */
         public Features(boolean karstCaves, boolean vanillaCaves, boolean vanillaDecorations) {
-            this(karstCaves, vanillaCaves, vanillaDecorations, false, 1.0, false, false, null, 1.0);
+            this(karstCaves, vanillaCaves, vanillaDecorations, false, 1.0, false, false, null, 1.0, null);
         }
 
         public static Features from(dev.terraforge.core.config.TerraForgeConfig.GenerationSection generation) {
@@ -466,7 +478,7 @@ public final class TerraForgeChunkGenerator extends ChunkGenerator {
             return new Features(generation.caves(), generation.vanillaCaves(),
                     generation.vanillaDecorations(), vegetation.enabled(), vegetation.density(),
                     vegetation.customTrees(), vegetation.farmland(), generation.underground(),
-                    vegetation.farmlandShare());
+                    vegetation.farmlandShare(), vegetation);
         }
     }
 }

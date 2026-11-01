@@ -39,7 +39,7 @@ public final class UndergroundGenerator {
         this.variety = settings.stoneVariety()
                 ? new VeinPlacer(OreTable.stoneVariety(floorY, seaLevel, topY), 1.0) : null;
         this.caves = settings.caves() ? new WormCaves(settings.caveRarity(), floorY, seaLevel) : null;
-        List<OreBand> oreBands = OreTable.ores(floorY, seaLevel, topY);
+        List<OreBand> oreBands = OreTable.ores(floorY, seaLevel, topY, settings.emeraldMultiplier());
         this.ores = settings.ores() ? new VeinPlacer(oreBands, settings.oreMultiplier()) : null;
     }
 

@@ -49,6 +49,10 @@ public final class VegetationPlan {
     private final boolean customTrees;
     private final boolean farmland;
     private final double farmlandShare;
+    private final double reedDensity;
+    private final double deadBushDensity;
+    private final boolean plantsOnSand;
+    private final KelpLimit kelpLimit;
 
     /** Picks which fields are tilled; independent of {@link #FIELD_SALT} so crops do not bias it. */
     private static final long TILLED_SALT = 0x54494C4CL;
@@ -65,6 +69,17 @@ public final class VegetationPlan {
      * @param farmlandShare share of cropland fields that are tilled, {@code 0..1}; the rest grow as meadow
      */
     public VegetationPlan(double density, boolean customTrees, boolean farmland, double farmlandShare) {
+        this(density, customTrees, farmland, farmlandShare, 1.0, 1.0, true, KelpLimit.NONE);
+    }
+
+    /**
+     * @param reedDensity     share of the calibrated sugar cane that grows, {@code 0..1}
+     * @param deadBushDensity share of the calibrated dead bushes that grows, {@code 0..1}
+     * @param plantsOnSand    grass, ferns, bushes and sugar cane may grow on sand
+     * @param kelpLimit       how long a kelp stalk may be
+     */
+    public VegetationPlan(double density, boolean customTrees, boolean farmland, double farmlandShare,
+                          double reedDensity, double deadBushDensity, boolean plantsOnSand, KelpLimit kelpLimit) {
         if (!(density >= 0.0) || !Double.isFinite(density)) {
             throw new IllegalArgumentException("vegetation density must not be negative: " + density);
         }
@@ -75,6 +90,10 @@ public final class VegetationPlan {
         this.customTrees = customTrees;
         this.farmland = farmland;
         this.farmlandShare = farmlandShare;
+        this.reedDensity = reedDensity;
+        this.deadBushDensity = deadBushDensity;
+        this.plantsOnSand = plantsOnSand;
+        this.kelpLimit = kelpLimit;
     }
 
     /** Calibrated density, every feature on. */
@@ -143,8 +162,8 @@ public final class VegetationPlan {
         record Seagrass(boolean tall) implements Placement {
         }
 
-        /** A kelp stalk of the given height rising from the bed. */
-        record Kelp(int height) implements Placement {
+        /** A kelp stalk of the given height rising from the bed; a fully grown tip stays that height. */
+        record Kelp(int height, boolean fullyGrown) implements Placement {
         }
 
         /** A coral block on the bed with, optionally, a coral or fan on top of it. */
@@ -184,7 +203,8 @@ public final class VegetationPlan {
 
         // Reeds first: they need water beside them, and that is rarer than any other condition.
         if (column.freshWaterAtLevel() && growsReeds(biome, ground)
-                && random.nextDouble() < reedChance(biome) * density) {
+                && random.nextDouble() < reedChance(biome) * density * reedDensity
+                && (plantsOnSand || !isSand(ground))) {
             return new Placement.SugarCane(2 + random.nextInt(3));
         }
 
@@ -209,7 +229,39 @@ public final class VegetationPlan {
         if (random.nextDouble() >= plantChance) {
             return Placement.None.INSTANCE;
         }
-        return plant(column, random);
+        return thinned(plant(column, random), ground, random);
+    }
+
+    /** Applies {@code plants-on-sand} and {@code dead-bush-density} to the plant a column chose. */
+    private Placement thinned(Placement placement, Material ground, Random random) {
+        Material plant = switch (placement) {
+            case Placement.Plant single -> single.material();
+            case Placement.TallPlant tall -> tall.material();
+            default -> null;
+        };
+        if (plant == null) {
+            return placement;
+        }
+        if (!plantsOnSand && isSand(ground) && sandGrass(plant)) {
+            return Placement.None.INSTANCE;
+        }
+        // Drawn only when thinning, so a world at full density keeps its layout draw for draw.
+        if (plant == Material.DEAD_BUSH && deadBushDensity < 1.0 && random.nextDouble() >= deadBushDensity) {
+            return Placement.None.INSTANCE;
+        }
+        return placement;
+    }
+
+    private static boolean isSand(Material ground) {
+        return ground == Material.SAND || ground == Material.RED_SAND;
+    }
+
+    /** Grass-like plants that read as wrong on bare sand; flowers, cacti and dead bushes do not. */
+    private static boolean sandGrass(Material plant) {
+        return switch (plant) {
+            case SHORT_GRASS, TALL_GRASS, SHORT_DRY_GRASS, TALL_DRY_GRASS, FERN, LARGE_FERN, BUSH -> true;
+            default -> false;
+        };
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -740,7 +792,8 @@ public final class VegetationPlan {
     private Placement temperateSeabed(Column column, int depth, double roll, Random random) {
         double forest = CellNoise.smooth(column.x(), column.z(), 40, KELP_SALT);
         if (depth >= 5 && forest > 0.55 && roll < 0.30 * density) {
-            return new Placement.Kelp(Math.min(depth - 1, 4 + random.nextInt(Math.max(1, depth - 4))));
+            int length = Math.min(depth - 1, 4 + random.nextInt(Math.max(1, depth - 4)));
+            return new Placement.Kelp(kelpLimit.apply(length), kelpLimit.stopsGrowth());
         }
         if (depth >= 2 && roll < 0.14 * density) {
             return new Placement.Seagrass(depth >= 3 && random.nextDouble() < 0.4);

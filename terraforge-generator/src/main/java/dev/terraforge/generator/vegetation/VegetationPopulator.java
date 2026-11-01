@@ -43,10 +43,17 @@ public final class VegetationPopulator extends BlockPopulator {
 
     private final TerrainPipeline pipeline;
     private final VegetationPlan plan;
+    private final ChunkFlora flora;
 
     public VegetationPopulator(TerrainPipeline pipeline, VegetationPlan plan) {
+        this(pipeline, plan, null);
+    }
+
+    /** @param flora the per-chunk passes to run after the columns, or {@code null} for none */
+    public VegetationPopulator(TerrainPipeline pipeline, VegetationPlan plan, ChunkFlora flora) {
         this.pipeline = pipeline;
         this.plan = plan;
+        this.flora = flora;
     }
 
     @Override
@@ -82,6 +89,17 @@ public final class VegetationPopulator extends BlockPopulator {
                     // One bad block must never take the chunk system down with it. Paper treats any
                     // exception out of a populator as unrecoverable and stops the server.
                     warnOnce(placement, e);
+                }
+            }
+        }
+        if (flora != null) {
+            try {
+                flora.populate(region, window::at, chunkX, chunkZ, minY, maxY, seed(chunkX, chunkZ));
+            } catch (RuntimeException e) {
+                // Same reason as above: an exception out of a populator stops the server.
+                if (WARNED.add("flora:" + e.getClass().getSimpleName())) {
+                    LOG.log(System.Logger.Level.WARNING, "[TerraForge-Generator] flora pass failed and was "
+                            + "skipped; further failures of this kind are not logged", e);
                 }
             }
         }
@@ -131,7 +149,8 @@ public final class VegetationPopulator extends BlockPopulator {
                     region.setType(x, cy, z, Material.KELP_PLANT);
                 }
                 Ageable tip = (Ageable) Material.KELP.createBlockData();
-                tip.setAge(Math.min(tip.getMaximumAge(), 15 + random.nextInt(10)));
+                int age = 15 + random.nextInt(10);
+                tip.setAge(kelp.fullyGrown() ? tip.getMaximumAge() : Math.min(tip.getMaximumAge(), age));
                 region.setBlockData(x, top, z, tip);
             }
             case Placement.Coral coral -> {

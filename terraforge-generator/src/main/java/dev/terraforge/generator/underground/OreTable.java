@@ -46,6 +46,14 @@ final class OreTable {
 
     /** Coal, iron, copper, gold, redstone, lapis, diamond and emerald veins. */
     static List<OreBand> ores(int floorY, int seaLevel, int topY) {
+        return ores(floorY, seaLevel, topY, 1.0);
+    }
+
+    /**
+     * The same veins with emerald scaled on its own. The band keeps its name and so its seed, which
+     * means a multiplier adds emerald without moving the blocks that were already there.
+     */
+    static List<OreBand> ores(int floorY, int seaLevel, int topY, double emeraldMultiplier) {
         Frame frame = new Frame(floorY, seaLevel, topY);
         List<OreBand> bands = new ArrayList<>();
         frame.vanilla(bands, "coal", Mineral.COAL, 17, 20, 0, 127, false, false);
@@ -59,7 +67,7 @@ final class OreTable {
         frame.vanilla(bands, "diamond", Mineral.DIAMOND, 8, 1, 0, 15, false, true);
         frame.vanilla(bands, "lapis", Mineral.LAPIS, 7, 1, 0, 30, true, true);
         // Vanilla 1.16: three to eight single blocks between y=4 and y=31, in mountains only.
-        OreBand emerald = frame.clip("emerald", Mineral.EMERALD, 1, 5.5, 4, 31, false,
+        OreBand emerald = frame.clip("emerald", Mineral.EMERALD, 1, 5.5 * emeraldMultiplier, 4, 31, false,
                 EMERALD_MIN_ELEVATION_METRES);
         if (emerald != null) {
             bands.add(emerald);

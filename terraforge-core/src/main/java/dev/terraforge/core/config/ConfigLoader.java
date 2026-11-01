@@ -96,11 +96,37 @@ public final class ConfigLoader {
         double farmlandShare = config.generation().vegetation().farmlandShare();
         require(farmlandShare >= 0.0 && farmlandShare <= 1.0,
                 "generation.vegetation.farmland-share must be between 0 and 1");
+        TerraForgeConfig.VegetationSection vegetation = config.generation().vegetation();
+        require(vegetation.reedDensity() >= 0.0 && vegetation.reedDensity() <= 1.0,
+                "generation.vegetation.reed-density must be between 0 and 1");
+        require(vegetation.deadBushDensity() >= 0.0 && vegetation.deadBushDensity() <= 1.0,
+                "generation.vegetation.dead-bush-density must be between 0 and 1");
+        require(vegetation.darkOak().temperateRainforest() >= 0.0
+                        && Double.isFinite(vegetation.darkOak().temperateRainforest())
+                        && vegetation.darkOak().temperateForest() >= 0.0
+                        && Double.isFinite(vegetation.darkOak().temperateForest()),
+                "generation.vegetation.dark-oak densities must not be negative");
+        require(vegetation.cocoa().treeChance() >= 0.0 && vegetation.cocoa().treeChance() <= 1.0
+                        && vegetation.cocoa().sideChance() >= 0.0 && vegetation.cocoa().sideChance() <= 1.0,
+                "generation.vegetation.cocoa chances must be between 0 and 1");
+        TerraForgeConfig.KelpSection kelp = vegetation.kelp();
+        require(kelp.patchesPerChunk() >= 0.0 && Double.isFinite(kelp.patchesPerChunk()),
+                "generation.vegetation.kelp.patches-per-chunk must not be negative");
+        require(kelp.columnsPerPatch() >= 1, "generation.vegetation.kelp.columns-per-patch must be at least 1");
+        require(kelp.patchRadius() >= 0 && kelp.patchRadius() <= 7,
+                "generation.vegetation.kelp.patch-radius must be between 0 and 7");
+        require(kelp.surfaceGapMin() >= 0 && kelp.surfaceGapMax() >= kelp.surfaceGapMin(),
+                "generation.vegetation.kelp.surface-gap-min/max must form a non-negative range");
+        require(kelp.lengthFraction() > 0.0 && kelp.lengthFraction() <= 1.0,
+                "generation.vegetation.kelp.length-fraction must be above 0 and at most 1");
+        require(kelp.maxHeight() >= 0, "generation.vegetation.kelp.max-height must not be negative");
         TerraForgeConfig.UndergroundSection underground = config.generation().underground();
         require(underground.oreMultiplier() >= 0.0 && Double.isFinite(underground.oreMultiplier()),
                 "generation.underground.ore-multiplier must not be negative");
         require(underground.caveRarity() >= 1.0 && Double.isFinite(underground.caveRarity()),
                 "generation.underground.cave-rarity must be at least 1");
+        require(underground.emeraldMultiplier() >= 0.0 && Double.isFinite(underground.emeraldMultiplier()),
+                "generation.underground.emerald-multiplier must not be negative");
 
         TerraForgeConfig.PregenerationSection pregeneration = config.pregeneration();
         require(pregeneration != null, "pregeneration section must be present");

@@ -266,6 +266,29 @@ load. Its `density` was never
 honoured by any code path, and its `enabled` was really the switch for vanilla's entire decoration
 pass, now named `generation.vanilla-decorations`.
 
+### Finer vegetation controls
+
+Under `generation.vegetation`. Every one defaults to what the world grew without it.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `reed-density` | `1.0` | share of the calibrated sugar cane that grows |
+| `dead-bush-density` | `1.0` | share of the calibrated dead bushes that grows |
+| `plants-on-sand` | `true` | grass, ferns, bushes and sugar cane on sand |
+| `dark-oak.temperate-rainforest` | `0.0` | mean extra dark oaks per chunk in dark forest |
+| `dark-oak.temperate-forest` | `0.0` | the same in temperate forest |
+| `cocoa.tree-chance` | `0.0` | share of jungle trunks that carry cocoa pods |
+| `cocoa.side-chance` | `0.0` | chance of a pod on each side of the lowest three logs |
+| `kelp.patches-per-chunk` | `0.0` | mean extra kelp patches per chunk in temperate oceans |
+| `kelp.columns-per-patch` | `12` | stalks attempted in one patch |
+| `kelp.patch-radius` | `3` | how far a stalk lands from its patch centre (0..7) |
+| `kelp.surface-gap-min`, `-max` | `1`, `8` | blocks of open water left above a patch stalk |
+| `kelp.length-fraction` | `1.0` | every stalk is cut to this share of its length, rounded up |
+| `kelp.max-height` | `0` | no stalk is longer than this; `0` means no limit |
+
+The per-chunk passes each draw from their own random, so turning one on does not move anything the
+columns placed. A limited kelp stalk is generated fully grown and does not grow past its limit.
+
 ### `generation.underground`
 
 | Key | Default | Meaning |
@@ -275,6 +298,7 @@ pass, now named `generation.vanilla-decorations`.
 | `stone-variety` | `true` | dirt, gravel, granite, diorite, andesite, tuff and blackstone pockets |
 | `caves` | `true` | winding cave systems under land |
 | `cave-rarity` | `7.0` | one cave system starts in one chunk of this many; lower means more caves |
+| `emerald-multiplier` | `1.0` | multiplier on emerald alone, on top of `ore-multiplier` |
 
 What `vanilla-decorations` and `vanilla-caves` cannot give a scaled world. The pass runs inside
 chunk generation, on Paper's generation threads: it models the chunk's stone from the samples the

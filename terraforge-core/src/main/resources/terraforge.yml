@@ -150,6 +150,31 @@ generation:
     # Share of flat cropland that is tilled (0..1); the rest stays meadow. At a kilometre per block
     # real cropland covers whole regions, so tilling all of it makes an endless allotment.
     farmland-share: 0.25
+    # Share of the calibrated sugar cane and dead bushes that grows (0..1).
+    reed-density: 1.0
+    dead-bush-density: 1.0
+    # Grass, ferns, bushes and sugar cane on sand. Off leaves beaches and deserts bare.
+    plants-on-sand: true
+    # Mean extra dark oaks per chunk, on top of the regular forest. 0 adds none.
+    dark-oak:
+      temperate-rainforest: 0.0
+      temperate-forest: 0.0
+    # Cocoa pods on jungle trunks: share of trunks with pods, and the chance per side of a low log.
+    cocoa:
+      tree-chance: 0.0
+      side-chance: 0.0
+    kelp:
+      # Mean extra patches per chunk in temperate oceans, rising from the bed. 0 adds none.
+      patches-per-chunk: 0.0
+      columns-per-patch: 12
+      patch-radius: 3
+      # Blocks of open water left above a patch stalk, picked at random in this range.
+      surface-gap-min: 1
+      surface-gap-max: 8
+      # Every stalk is cut to this share of its length, rounded up.
+      length-fraction: 1.0
+      # No stalk is longer than this; 0 means no limit. Limited stalks are generated fully grown.
+      max-height: 0
 
   # What lies under the ground, generated with the chunk on the generation threads -- never patched
   # into a live world afterwards. Heights follow this world's sea level and floor, not vanilla's, so
@@ -167,6 +192,8 @@ generation:
     caves: true
     # One cave system starts in one chunk of this many. Vanilla 1.16 is 7; lower means more caves.
     cave-rarity: 7.0
+    # Multiplier on emerald alone, on top of ore-multiplier.
+    emerald-multiplier: 1.0
 
 pregeneration:
   # Never permit an unbounded async queue; one chunk is the safe default.

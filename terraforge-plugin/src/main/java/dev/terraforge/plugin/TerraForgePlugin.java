@@ -407,7 +407,8 @@ public final class TerraForgePlugin extends JavaPlugin implements Listener {
                 + " (trees, ores, springs and lava lakes together)");
         var underground = generation.underground();
         getLogger().info("Underground:  ores " + onOff(underground.ores())
-                + " (x" + underground.oreMultiplier() + "), stone variety " + onOff(underground.stoneVariety())
+                + " (x" + underground.oreMultiplier() + ", emerald x" + underground.emeraldMultiplier()
+                + "), stone variety " + onOff(underground.stoneVariety())
                 + ", cave systems " + onOff(underground.caves())
                 + (underground.caves() ? " (1 in " + underground.caveRarity() + " chunks)" : ""));
         getLogger().info(line);
