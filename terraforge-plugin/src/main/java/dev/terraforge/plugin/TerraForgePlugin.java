@@ -170,7 +170,12 @@ public final class TerraForgePlugin extends JavaPlugin implements Listener {
         getServer().getPluginManager().registerEvents(this, this);
         if (config.world().border().enabled()) {
             // Registered before any world loads (load: STARTUP), so WorldLoadEvent draws each border.
-            getServer().getPluginManager().registerEvents(new PlanetEdgeGuard(getLogger(), LOG_PREFIX), this);
+            getServer().getPluginManager().registerEvents(new PlanetEdgeGuard(getLogger(), LOG_PREFIX,
+                    config.world().nether().border()), this);
+        }
+        if (!config.world().nether().spawners()) {
+            getServer().getPluginManager().registerEvents(
+                    new dev.terraforge.plugin.world.NetherSpawnerRemover(config.world().name()), this);
         }
         // Lifecycle event registration (Paper's command API) closes once world loading starts, so this
         // cannot wait for ServerLoadEvent -- unlike the rest of onServerLoad, it depends on nothing

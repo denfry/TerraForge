@@ -341,6 +341,7 @@ public final class TerraForgeChunkGenerator extends ChunkGenerator {
         if (palette == null) {
             java.util.Map<Material, BlockData> built = new java.util.EnumMap<>(Material.class);
             built.put(Material.CAVE_AIR, Material.CAVE_AIR.createBlockData());
+            built.put(Material.LAVA, Material.LAVA.createBlockData()); // the floor of deep caves
             for (dev.terraforge.generator.underground.Mineral mineral
                     : dev.terraforge.generator.underground.Mineral.values()) {
                 built.put(mineral.material(), mineral.material().createBlockData());

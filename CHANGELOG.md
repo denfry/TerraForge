@@ -39,6 +39,18 @@ not optional:
   and gullies, and slopes become even contour steps; the detail adds noise that follows the local
   slope -- a block or two on a plain, up to ten on a mountain side. Absent means `0`; a new config
   sets `1.0`.
+- `generation.underground.cave-entrances`: a share of the cave systems may come up through the soil
+  to the open air, as vanilla's do, and vanilla's ravines come with them. Caves stayed six blocks
+  under the ground everywhere, so no player ever saw one without digging. The worm systems keep to
+  vanilla's band near the sea, under mountains as well, so chunks also get cave mouths: a shaft from
+  the surface 14 to 28 blocks down into a chamber, in a quarter of `cave-entrances` of them, on dry
+  land only. Nothing opens near water either way. Absent means `0`; a new config sets `0.3`.
+- `generation.underground.cave-lava`: lava in the caves' lowest eleven blocks, as vanilla 1.16 has.
+- `world.nether.border`: the Nether paired with the world (`earth_nether`) ends at the planet's edge
+  scaled 1:8, as its coordinates are. It was endless: a player walked far past where the planet ends
+  and every portal back came out on the edge, where they piled up.
+- `world.nether.spawners: false` removes the spawners vanilla builds into fortresses and bastions as
+  each Nether chunk loads, also in chunks generated before. Blazes still spawn in fortresses.
 - `generation.structures`: ruins and remains for players to find, matched to the climate and
   stocked from vanilla loot tables -- stone-brick watchtowers, desert ruins with a cellar under a
   loose slab, stepped jungle shrines, stone circles with something buried at the centre, abandoned

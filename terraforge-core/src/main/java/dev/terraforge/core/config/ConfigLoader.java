@@ -115,6 +115,8 @@ public final class ConfigLoader {
                 "generation.underground.ore-multiplier must not be negative");
         require(underground.caveRarity() >= 1.0 && Double.isFinite(underground.caveRarity()),
                 "generation.underground.cave-rarity must be at least 1");
+        require(underground.caveEntrances() >= 0.0 && underground.caveEntrances() <= 1.0,
+                "generation.underground.cave-entrances must be between 0 and 1");
         require(underground.emeraldMultiplier() >= 0.0 && Double.isFinite(underground.emeraldMultiplier()),
                 "generation.underground.emerald-multiplier must not be negative");
 

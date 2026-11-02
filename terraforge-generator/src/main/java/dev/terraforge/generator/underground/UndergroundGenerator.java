@@ -28,6 +28,8 @@ public final class UndergroundGenerator {
     private final VeinPlacer variety;
     private final WormCaves caves;
     private final VeinPlacer ores;
+    /** Carved cells below this Y fill with lava, or none when {@code Integer.MIN_VALUE}. */
+    private final int lavaBelowY;
 
     /**
      * @param settings {@code generation.underground}
@@ -38,7 +40,12 @@ public final class UndergroundGenerator {
     public UndergroundGenerator(TerraForgeConfig.UndergroundSection settings, int floorY, int seaLevel, int topY) {
         this.variety = settings.stoneVariety()
                 ? new VeinPlacer(OreTable.stoneVariety(floorY, seaLevel, topY), 1.0) : null;
-        this.caves = settings.caves() ? new WormCaves(settings.caveRarity(), floorY, seaLevel) : null;
+        this.caves = settings.caves()
+                ? new WormCaves(settings.caveRarity(), settings.caveEntrances(), floorY, seaLevel) : null;
+        // Vanilla 1.16 floods every cave below y = 11 with lava; here eleven above the cave band's
+        // bottom, which follows the sea as the rest of the underground does.
+        this.lavaBelowY = settings.caveLava()
+                ? Math.max(floorY + 1, seaLevel - OreTable.VANILLA_SEA_LEVEL + 11) : Integer.MIN_VALUE;
         List<OreBand> oreBands = OreTable.ores(floorY, seaLevel, topY, settings.emeraldMultiplier());
         this.ores = settings.ores() ? new VeinPlacer(oreBands, settings.oreMultiplier()) : null;
     }
@@ -68,6 +75,6 @@ public final class UndergroundGenerator {
         if (ores != null) {
             ores.place(chunkX, chunkZ, cells, samples);
         }
-        return cells.writeTo(sink, Material.CAVE_AIR);
+        return cells.writeTo(sink, Material.CAVE_AIR, lavaBelowY);
     }
 }

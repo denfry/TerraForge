@@ -42,6 +42,22 @@ public record WorldExtent(int minX, int minZ, int maxX, int maxZ) {
                 (int) Math.floor(west + turn) - 1, (int) Math.floor(south) - 1);
     }
 
+    /**
+     * This extent in a dimension whose coordinates are {@code factor} times these -- {@code 1/8} for
+     * the Nether of an overworld. Rounded inward, so every block of the result maps inside this extent.
+     */
+    public WorldExtent scaled(double factor) {
+        if (!(factor > 0.0) || !Double.isFinite(factor)) {
+            throw new IllegalArgumentException("scale factor must be positive: " + factor);
+        }
+        int scaledMinX = (int) Math.ceil(minX * factor);
+        int scaledMinZ = (int) Math.ceil(minZ * factor);
+        int scaledMaxX = (int) Math.floor((maxX + 1.0) * factor) - 1;
+        int scaledMaxZ = (int) Math.floor((maxZ + 1.0) * factor) - 1;
+        return new WorldExtent(scaledMinX, scaledMinZ, Math.max(scaledMinX, scaledMaxX),
+                Math.max(scaledMinZ, scaledMaxZ));
+    }
+
     public boolean contains(double x, double z) {
         return x >= minX && x < maxX + 1.0 && z >= minZ && z < maxZ + 1.0;
     }

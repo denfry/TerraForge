@@ -27,6 +27,11 @@ import org.bukkit.util.Vector;
  * as wide as it is tall -- so the vanilla border is drawn around the longer axis for the wall players
  * can see, and this listener enforces the shorter one. The edge comes from each world's own
  * generator, so a world without a TerraForge border is never touched.
+ *
+ * <p>With {@code world.nether.border} the Nether paired with that world ({@code <name>_nether}) is held
+ * the same way to the planet's edge scaled by the two dimensions' coordinate ratio, 1:8. Without it the
+ * Nether is endless, a player walks past where the planet ends, and every portal back comes out at the
+ * edge, where they pile up.
  */
 public final class PlanetEdgeGuard implements Listener {
 
@@ -35,10 +40,20 @@ public final class PlanetEdgeGuard implements Listener {
 
     private final Logger logger;
     private final String logPrefix;
+    private final boolean netherBorder;
+    /** Each world's edge, or none; looked up once, as moves ask for it many times a second. */
+    private final java.util.Map<java.util.UUID, java.util.Optional<WorldExtent>> extents =
+            new java.util.concurrent.ConcurrentHashMap<>();
 
     public PlanetEdgeGuard(Logger logger, String logPrefix) {
+        this(logger, logPrefix, false);
+    }
+
+    /** @param netherBorder also hold the paired Nether to the planet's edge, scaled */
+    public PlanetEdgeGuard(Logger logger, String logPrefix, boolean netherBorder) {
         this.logger = logger;
         this.logPrefix = logPrefix;
+        this.netherBorder = netherBorder;
     }
 
     /** Draws the vanilla border around the planet's longer axis. Stored by the server in level.dat. */
@@ -143,9 +158,43 @@ public final class PlanetEdgeGuard implements Listener {
         return clamped;
     }
 
-    private static WorldExtent extentOf(World world) {
-        return world != null && world.getGenerator() instanceof TerraForgeChunkGenerator generator
-                ? generator.extent()
-                : null;
+    private WorldExtent extentOf(World world) {
+        if (world == null) {
+            return null;
+        }
+        if (world.getGenerator() instanceof TerraForgeChunkGenerator generator) {
+            return generator.extent();
+        }
+        if (!netherBorder || world.getEnvironment() != World.Environment.NETHER) {
+            return null;
+        }
+        java.util.Optional<WorldExtent> known = extents.get(world.getUID());
+        if (known != null) {
+            return known.orElse(null);
+        }
+        WorldExtent extent = netherExtent(world);
+        // Remembered once the overworld is there to ask; until then, asked again next time.
+        if (extent != null || org.bukkit.Bukkit.getWorld(stripNether(world.getName())) != null) {
+            extents.put(world.getUID(), java.util.Optional.ofNullable(extent));
+        }
+        return extent;
+    }
+
+    private static String stripNether(String name) {
+        return name.endsWith("_nether") ? name.substring(0, name.length() - "_nether".length()) : name;
+    }
+
+    /** The planet's edge in the Nether named after a TerraForge world, or {@code null}. */
+    private static WorldExtent netherExtent(World nether) {
+        String name = nether.getName();
+        if (!name.endsWith("_nether")) {
+            return null;
+        }
+        World overworld = org.bukkit.Bukkit.getWorld(name.substring(0, name.length() - "_nether".length()));
+        if (overworld == null || !(overworld.getGenerator() instanceof TerraForgeChunkGenerator generator)
+                || generator.extent() == null) {
+            return null;
+        }
+        return generator.extent().scaled(overworld.getCoordinateScale() / nether.getCoordinateScale());
     }
 }

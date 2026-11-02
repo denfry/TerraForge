@@ -282,6 +282,18 @@ pass, now named `generation.vanilla-decorations`.
 | `caves` | `true` | winding cave systems under land |
 | `cave-rarity` | `7.0` | one cave system starts in one chunk of this many; lower means more caves |
 | `emerald-multiplier` | `1.0` | multiplier on emerald ore alone, on top of `ore-multiplier` |
+| `cave-entrances` | `0` (`0.3` in a new config) | share of cave systems that may reach the open air, `0..1`; also brings ravines and, in a quarter as many chunks, cave mouths that start at the surface wherever it is. Never near water |
+| `cave-lava` | `false` (`true` in a new config) | lava in the caves' lowest eleven blocks, as vanilla 1.16 |
+
+#### `world.nether`
+
+The Nether paired with the TerraForge world, the one the server names `<world>_nether`. Vanilla
+generates it; these two keys only bound it and take its spawners out.
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `border` | `false` (`true` in a new config) | end the Nether at the planet's edge scaled by the dimensions' coordinate ratio, 1:8, so every portal leads back onto the planet. Needs `world.border.enabled` |
+| `spawners` | `true` | `false` removes fortress and bastion spawners as each Nether chunk loads, including chunks generated earlier |
 
 #### `generation.structures`
 

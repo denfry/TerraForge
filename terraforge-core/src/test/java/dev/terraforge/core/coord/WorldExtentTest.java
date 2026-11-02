@@ -97,4 +97,15 @@ class WorldExtentTest {
     void rejectsEmptyExtent() {
         assertThatThrownBy(() -> new WorldExtent(5, 0, 4, 0)).isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    void theNetherExtentIsTheOverworldsScaledOneToEightAndRoundedInward() {
+        WorldExtent planet = new WorldExtent(-20038, -10019, 20037, 10018);
+        WorldExtent nether = planet.scaled(1.0 / 8.0);
+        assertThat(nether).isEqualTo(new WorldExtent(-2504, -1252, 2503, 1251));
+        // Every Nether block maps back onto the planet.
+        assertThat(planet.contains(nether.minX() * 8.0, nether.minZ() * 8.0)).isTrue();
+        assertThat(planet.contains((nether.maxX() + 1) * 8.0 - 0.001, (nether.maxZ() + 1) * 8.0 - 0.001)).isTrue();
+        assertThatThrownBy(() -> planet.scaled(0.0)).isInstanceOf(IllegalArgumentException.class);
+    }
 }

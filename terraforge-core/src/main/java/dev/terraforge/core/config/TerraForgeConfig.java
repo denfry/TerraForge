@@ -39,7 +39,7 @@ public record TerraForgeConfig(
 
     public static TerraForgeConfig defaults() {
         return new TerraForgeConfig(
-                WorldSection.named("earth"),
+                new WorldSection("earth", BorderSection.disabled(), new NetherSection(true, true)),
                 new ScaleSection(1.0),
                 new EarthSection(new OriginSection(51.0, 10.0), "equirectangular"),
                 new TerrainSection(63, -64, 320, 1.0, 1.0, 0.0, 8, TerrainSection.DEFAULT_SMOOTHING, 0.0,
@@ -60,17 +60,49 @@ public record TerraForgeConfig(
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record WorldSection(String name, BorderSection border) {
+    public record WorldSection(String name, BorderSection border, NetherSection nether) {
 
         /** A config written before {@code border} existed loads with the border off. */
         public WorldSection {
             if (border == null) {
                 border = BorderSection.disabled();
             }
+            if (nether == null) {
+                nether = NetherSection.vanilla();
+            }
+        }
+
+        /** The Nether as vanilla has it. */
+        public WorldSection(String name, BorderSection border) {
+            this(name, border, null);
         }
 
         public static WorldSection named(String name) {
             return new WorldSection(name, BorderSection.disabled());
+        }
+    }
+
+    /**
+     * The Nether paired with the TerraForge world: the one the server names after it, {@code earth_nether}.
+     *
+     * @param border   hold it to the planet's edge scaled by the dimensions' coordinate ratio, 1:8, so
+     *                 every portal leads back onto the planet. Needs {@code world.border.enabled}.
+     * @param spawners keep the spawners vanilla puts in its fortresses and bastions; {@code false}
+     *                 removes them as each chunk loads. Blazes still spawn in fortresses on their own.
+     */
+    public record NetherSection(Boolean border, Boolean spawners) {
+
+        public NetherSection {
+            if (border == null) {
+                border = Boolean.FALSE;
+            }
+            if (spawners == null) {
+                spawners = Boolean.TRUE;
+            }
+        }
+
+        public static NetherSection vanilla() {
+            return new NetherSection(false, true);
         }
     }
 
@@ -353,9 +385,16 @@ public record TerraForgeConfig(
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record UndergroundSection(Boolean ores, Double oreMultiplier, Boolean stoneVariety,
-                                     Boolean caves, Double caveRarity, Double emeraldMultiplier) {
+                                     Boolean caves, Double caveRarity, Double emeraldMultiplier,
+                                     Double caveEntrances, Boolean caveLava) {
 
         public UndergroundSection {
+            if (caveEntrances == null || Double.isNaN(caveEntrances)) {
+                caveEntrances = 0.0; // every cave sealed, as before entrances existed
+            }
+            if (caveLava == null) {
+                caveLava = Boolean.FALSE;
+            }
             if (ores == null) {
                 ores = Boolean.TRUE;
             }
@@ -376,6 +415,12 @@ public record TerraForgeConfig(
             }
         }
 
+        /** Sealed caves without lava: as before cave entrances existed. */
+        public UndergroundSection(Boolean ores, Double oreMultiplier, Boolean stoneVariety,
+                                  Boolean caves, Double caveRarity, Double emeraldMultiplier) {
+            this(ores, oreMultiplier, stoneVariety, caves, caveRarity, emeraldMultiplier, null, null);
+        }
+
         /** Without an emerald multiplier: vanilla's emerald count. */
         public UndergroundSection(Boolean ores, Double oreMultiplier, Boolean stoneVariety,
                                   Boolean caves, Double caveRarity) {
@@ -383,7 +428,7 @@ public record TerraForgeConfig(
         }
 
         public static UndergroundSection defaults() {
-            return new UndergroundSection(true, 1.0, true, true, 7.0, 1.0);
+            return new UndergroundSection(true, 1.0, true, true, 7.0, 1.0, 0.3, true);
         }
 
         /** Nothing under the ground but stone: the behaviour before the underground pass existed. */

@@ -114,6 +114,63 @@ class UndergroundGeneratorTest {
     }
 
     @Test
+    @DisplayName("open caves reach the surface away from water, and deep caves hold lava")
+    void openCavesHaveMouthsAndLava() {
+        var open = new TerraForgeConfig.UndergroundSection(false, 1.0, false, true, 1.0, 1.0, 1.0, true);
+        UndergroundGenerator generator = new UndergroundGenerator(open, LEGACY_FLOOR, LEGACY_SEA, LEGACY_TOP);
+        int landSurface = 72;
+        int bed = 55;
+        int mouths = 0;
+        int lava = 0;
+        for (int cx = 0; cx < 12; cx++) {
+            for (int cz = 0; cz < 12; cz++) {
+                var samples = chunk(cx, cz, 4, (x, z) -> x >= 12
+                        ? water(bed, 60) : ground(landSurface, 300.0));
+                for (Placed p : generate(generator, samples)) {
+                    if (p.material() == Material.LAVA) {
+                        lava++;
+                        assertThat(p.y()).isLessThan(11);
+                        continue;
+                    }
+                    assertThat(p.material()).isEqualTo(Material.CAVE_AIR);
+                    if (p.y() == landSurface) {
+                        mouths++;
+                    }
+                    if (p.x() >= 12 - WormCaves.WATER_MARGIN) {
+                        assertThat(p.y()).as("under or beside the lake at x=%d", p.x())
+                                .isLessThanOrEqualTo(bed - WormCaves.ROOF - WormCaves.WATER_MARGIN);
+                    }
+                }
+            }
+        }
+        assertThat(mouths).as("surface blocks opened by caves").isGreaterThan(20);
+        assertThat(lava).isGreaterThan(100);
+    }
+
+    @Test
+    @DisplayName("high ground gets cave mouths, carved the same from every chunk they cross")
+    void mountainsHaveCaveMouths() {
+        var open = new TerraForgeConfig.UndergroundSection(false, 1.0, false, true, 1000.0, 1.0, 0.3, false);
+        UndergroundGenerator generator = new UndergroundGenerator(open, LEGACY_FLOOR, LEGACY_SEA, LEGACY_TOP);
+        int plateau = 170; // far above the worm systems' band
+        int mouths = 0;
+        java.util.Set<Long> open1 = new java.util.HashSet<>();
+        for (int cx = 0; cx < 16; cx++) {
+            for (int cz = 0; cz < 16; cz++) {
+                var samples = chunk(cx, cz, 8, (x, z) -> ground(plateau, 3000.0));
+                for (Placed p : generate(generator, samples)) {
+                    if (p.y() == plateau) {
+                        mouths++;
+                        open1.add(((long) (cx * 16 + p.x()) << 32) ^ (cz * 16 + p.z()));
+                    }
+                }
+            }
+        }
+        assertThat(mouths).as("surface blocks opened on a plateau").isGreaterThan(10);
+        assertThat(open1).hasSize(mouths);
+    }
+
+    @Test
     @DisplayName("a deeper world keeps the bands' depth below the sea and continues them to the floor")
     void bandsMoveWithTheSea() {
         List<OreBand> legacy = OreTable.ores(LEGACY_FLOOR, LEGACY_SEA, LEGACY_TOP);
