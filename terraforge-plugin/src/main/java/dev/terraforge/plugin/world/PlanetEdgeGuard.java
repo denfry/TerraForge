@@ -3,14 +3,18 @@ package dev.terraforge.plugin.world;
 import dev.terraforge.core.coord.WorldExtent;
 import dev.terraforge.generator.TerraForgeChunkGenerator;
 import io.papermc.paper.entity.TeleportFlag;
+import io.papermc.paper.event.entity.EntityMoveEvent;
 import java.util.logging.Logger;
 import org.bukkit.Location;
 import org.bukkit.World;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.Player;
 import org.bukkit.entity.Vehicle;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.player.PlayerPortalEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.event.vehicle.VehicleMoveEvent;
 import org.bukkit.event.world.WorldLoadEvent;
@@ -64,16 +68,59 @@ public final class PlanetEdgeGuard implements Listener {
         event.setTo(inside(extent, to));
     }
 
+    /**
+     * A teleport past the edge is refused, except through a portal: the Nether is scaled 1:8 and its
+     * far side maps past the planet, and refusing the portal would strand the player in the Nether.
+     * The portal exit is moved onto the edge instead; Paper searches for or builds the portal there.
+     */
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onTeleport(PlayerTeleportEvent event) {
         Location to = event.getTo();
         WorldExtent extent = extentOf(to.getWorld());
-        if (extent != null && !extent.contains(to.getX(), to.getZ())) {
+        if (extent == null || extent.contains(to.getX(), to.getZ())) {
+            return;
+        }
+        if (event instanceof PlayerPortalEvent) {
+            event.setTo(portalExit(extent, to));
+        } else {
             event.setCancelled(true);
         }
     }
 
-    /** A boat or a horse carries its rider past {@link PlayerMoveEvent}, which only sees walking. */
+    /** Where a portal that would lead past the edge comes out: the nearest point inside. */
+    static Location portalExit(WorldExtent extent, Location to) {
+        return inside(extent, to);
+    }
+
+    /**
+     * Living mounts -- horses, pigs, camels, striders, happy ghasts -- move by {@link EntityMoveEvent};
+     * {@link VehicleMoveEvent} only covers boats and minecarts, and a ridden player sends no move.
+     */
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onMountMove(EntityMoveEvent event) {
+        Location to = event.getTo();
+        WorldExtent extent = extentOf(to.getWorld());
+        if (extent == null || extent.contains(to.getX(), to.getZ()) || !carriesPlayer(event.getEntity())) {
+            return;
+        }
+        if (extent.contains(event.getFrom().getX(), event.getFrom().getZ())) {
+            event.setCancelled(true);
+        } else {
+            event.getEntity().setVelocity(new Vector());
+            event.getEntity().teleport(inside(extent, to), TeleportFlag.EntityState.RETAIN_PASSENGERS);
+        }
+    }
+
+    private static boolean carriesPlayer(Entity mount) {
+        for (Entity passenger : mount.getPassengers()) {
+            if (passenger instanceof Player) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** A boat or a minecart carries its rider past {@link PlayerMoveEvent}, which only sees walking. */
     @EventHandler(priority = EventPriority.HIGH)
     public void onVehicleMove(VehicleMoveEvent event) {
         Location to = event.getTo();
