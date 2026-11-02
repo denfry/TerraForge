@@ -107,7 +107,9 @@ public final class PlanetEdgeGuard implements Listener {
             event.setCancelled(true);
         } else {
             event.getEntity().setVelocity(new Vector());
-            event.getEntity().teleport(inside(extent, to), TeleportFlag.EntityState.RETAIN_PASSENGERS);
+            // Folia refuses a synchronous teleport; the async one is a plain teleport on Paper.
+            event.getEntity().teleportAsync(inside(extent, to), PlayerTeleportEvent.TeleportCause.PLUGIN,
+                    TeleportFlag.EntityState.RETAIN_PASSENGERS);
         }
     }
 
@@ -130,7 +132,8 @@ public final class PlanetEdgeGuard implements Listener {
         }
         Vehicle vehicle = event.getVehicle();
         vehicle.setVelocity(new Vector());
-        vehicle.teleport(inside(extent, to), TeleportFlag.EntityState.RETAIN_PASSENGERS);
+        vehicle.teleportAsync(inside(extent, to), PlayerTeleportEvent.TeleportCause.PLUGIN,
+                TeleportFlag.EntityState.RETAIN_PASSENGERS);
     }
 
     private static Location inside(WorldExtent extent, Location location) {

@@ -8,6 +8,7 @@ bootstrapper: dev.terraforge.plugin.TerraForgeBootstrap
 # with it: paper-plugin.yml is what Paper actually reads for load order.
 load: STARTUP
 api-version: '${apiVersion}'
+folia-supported: true
 dependencies:
   server:
     Towny: {load: BEFORE, required: false, join-classpath: true}

@@ -5,7 +5,7 @@ api-version: '${apiVersion}'
 description: Real Earth terrain engine -- natural geography only, no man-made infrastructure.
 author: TerraForge
 website: https://github.com/denfry/TerraForge
-folia-supported: false
+folia-supported: true
 
 # The default world's generator is resolved during server startup, before plugins normally
 # enable -- without STARTUP load order, Bukkit calls getDefaultWorldGenerator() too early and

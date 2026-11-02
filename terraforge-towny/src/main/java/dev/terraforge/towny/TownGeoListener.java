@@ -54,7 +54,8 @@ public final class TownGeoListener implements Listener {
         if (town == null) {
             return;
         }
-        plugin.getServer().getScheduler().runTask(plugin, () -> {
+        // Towny data only, no world access: the global region thread is the next tick on Paper and Folia alike.
+        plugin.getServer().getGlobalRegionScheduler().run(plugin, scheduled -> {
             try {
                 service.refresh(town);
             } catch (RuntimeException exception) {

@@ -122,8 +122,10 @@ public final class TerraForgePlugin extends JavaPlugin implements Listener {
     private boolean managedWorldReady;
     private DemCorruptionCache demCorruptionCache;
     private DemFingerprintCache demFingerprintCache;
-    private org.bukkit.scheduler.BukkitTask pregenerationHealthCheckTask;
-    private final Executor asyncExecutor = task -> getServer().getScheduler().runTaskAsynchronously(this, task);
+    private io.papermc.paper.threadedregions.scheduler.ScheduledTask pregenerationHealthCheckTask;
+    // The async scheduler exists on Paper and Folia alike; BukkitScheduler is unsupported on Folia.
+    private final dev.terraforge.plugin.pregen.TickHealthSampler tickHealth = new dev.terraforge.plugin.pregen.TickHealthSampler();
+    private final Executor asyncExecutor = task -> getServer().getAsyncScheduler().runNow(this, scheduled -> task.run());
 
     /** How often {@link PregenerationController#reevaluateHealth()} is polled on a repeating task, so
      *  an AUTO_PAUSED job (including one stuck waiting out the health policy's stability window) is
@@ -480,7 +482,7 @@ public final class TerraForgePlugin extends JavaPlugin implements Listener {
             getLogger().warning(LOG_PREFIX + "Managed Earth world is not loaded; pregeneration stays disabled.");
             return;
         }
-        var adapter = new PaperPregenerationAdapter(this, world, hasPreparedDem());
+        var adapter = new PaperPregenerationAdapter(this, world, hasPreparedDem(), tickHealth);
         var pregenerationConfig = config.pregeneration();
         var healthPolicy = new ServerHealthPolicy(pregenerationConfig.pauseWhenPlayersOnline(),
                 pregenerationConfig.minimumTps(), pregenerationConfig.maximumMspt(),
@@ -503,8 +505,9 @@ public final class TerraForgePlugin extends JavaPlugin implements Listener {
         // callback (which early-returns once paused), so a job that auto-paused -- including one that
         // landed back in the health policy's stability window right after a manual resume() -- would
         // never be re-evaluated and would stay paused forever.
-        this.pregenerationHealthCheckTask = getServer().getScheduler().runTaskTimer(this,
-                pregenerationController::reevaluateHealth,
+        // The global region thread is the controller's executor too, so this never races a callback.
+        this.pregenerationHealthCheckTask = getServer().getGlobalRegionScheduler().runAtFixedRate(this,
+                scheduled -> pregenerationController.reevaluateHealth(),
                 PREGENERATION_HEALTH_RECHECK_INTERVAL_TICKS, PREGENERATION_HEALTH_RECHECK_INTERVAL_TICKS);
     }
 
@@ -593,8 +596,8 @@ public final class TerraForgePlugin extends JavaPlugin implements Listener {
         }
         @Override public ServerHealthSnapshot currentHealth() {
             return pregenerationAdapter != null ? pregenerationAdapter.snapshot()
-                    : new ServerHealthSnapshot(getServer().getOnlinePlayers().size(), getServer().getTPS()[0],
-                            getServer().getAverageTickTime(), 0, false, false, false);
+                    : new ServerHealthSnapshot(getServer().getOnlinePlayers().size(), tickHealth.tps(getServer()),
+                            tickHealth.mspt(getServer()), 0, false, false, false);
         }
         @Override public long reserveDiskGb() { return config.pregeneration().minimumFreeDiskGb(); }
         @Override public boolean pauseWhenPlayersOnline() { return config.pregeneration().pauseWhenPlayersOnline(); }
@@ -630,8 +633,8 @@ public final class TerraForgePlugin extends JavaPlugin implements Listener {
 
     /** Wires {@code PerformanceCommandHandler} to live server and pregeneration health. */
     private final class PluginPerformanceCommandContext implements PerformanceCommandContext {
-        @Override public double tps() { return getServer().getTPS()[0]; }
-        @Override public double mspt() { return getServer().getAverageTickTime(); }
+        @Override public double tps() { return tickHealth.tps(getServer()); }
+        @Override public double mspt() { return tickHealth.mspt(getServer()); }
         @Override public int onlinePlayers() { return getServer().getOnlinePlayers().size(); }
         @Override public long usableDiskGb() { return getDataFolder().getUsableSpace() / (1024L * 1024L * 1024L); }
         @Override public Optional<Integer> pregenerationInFlight() {

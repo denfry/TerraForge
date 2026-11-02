@@ -391,9 +391,9 @@ public final class EarthCommand implements CommandExecutor, TabCompleter {
         var sample = samples.at(Math.floorMod(blockX, 16), Math.floorMod(blockZ, 16));
         int y = Math.max(sample.surfaceY(), sample.waterSurfaceY()) + 2;
         Location destination = new Location(player.getWorld(), minecraft.x() + 0.5, y, minecraft.z() + 0.5);
-        player.teleportAsync(destination).thenAccept(success -> plugin.getServer().getScheduler().runTask(plugin,
-                () -> player.sendMessage(Component.text(success ? successMessage : "Teleport was cancelled.",
-                        success ? NamedTextColor.GREEN : NamedTextColor.RED))));
+        player.teleportAsync(destination).thenAccept(success -> player.getScheduler().run(plugin,
+                scheduled -> player.sendMessage(Component.text(success ? successMessage : "Teleport was cancelled.",
+                        success ? NamedTextColor.GREEN : NamedTextColor.RED)), null));
         return true;
     }
 

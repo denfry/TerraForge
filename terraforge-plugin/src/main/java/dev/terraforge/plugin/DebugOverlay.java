@@ -1,19 +1,20 @@
 package dev.terraforge.plugin;
 
+import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import java.util.Locale;
-import java.util.Set;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.entity.Player;
-import org.bukkit.scheduler.BukkitTask;
 
 /**
  * Per-player action-bar overlay showing what the generator produced under the player's feet.
  *
- * <p>Opt-in and per player: the repeating task exists only while at least one player is subscribed,
- * and it stops itself as soon as the last one leaves. A debug tool that costs a tick every tick
+ * <p>Opt-in and per player: each subscriber has its own repeating task on the player's scheduler,
+ * which on Folia runs on the thread that owns the player and on Paper on the main thread. The task
+ * ends with the subscription or when the player leaves. A debug tool that costs a tick every tick
  * regardless of whether anyone is looking is not a debug tool.
  *
  * <p>Samples come from the chunk sampler's cache, so an overlay refresh is a lookup, not a
@@ -25,8 +26,7 @@ final class DebugOverlay {
     private static final long REFRESH_TICKS = 5L;
 
     private final TerraForgePlugin plugin;
-    private final Set<UUID> subscribers = ConcurrentHashMap.newKeySet();
-    private BukkitTask task;
+    private final Map<UUID, ScheduledTask> subscribers = new ConcurrentHashMap<>();
 
     DebugOverlay(TerraForgePlugin plugin) {
         this.plugin = plugin;
@@ -35,49 +35,32 @@ final class DebugOverlay {
     /** Turns the overlay on or off for one player. Returns the state it ended up in. */
     synchronized boolean toggle(Player player) {
         UUID id = player.getUniqueId();
-        boolean enabled;
-        if (subscribers.remove(id)) {
-            enabled = false;
-        } else {
-            subscribers.add(id);
-            enabled = true;
+        ScheduledTask existing = subscribers.remove(id);
+        if (existing != null) {
+            existing.cancel();
+            return false;
         }
-        if (subscribers.isEmpty()) {
-            stop();
-        } else if (task == null) {
-            task = plugin.getServer().getScheduler().runTaskTimer(plugin, this::tick, REFRESH_TICKS, REFRESH_TICKS);
+        // The retired callback runs when the player leaves; the subscription goes with them.
+        ScheduledTask task = player.getScheduler().runAtFixedRate(plugin, scheduled -> tick(player),
+                () -> subscribers.remove(id), REFRESH_TICKS, REFRESH_TICKS);
+        if (task == null) {
+            return false;
         }
-        return enabled;
+        subscribers.put(id, task);
+        return true;
     }
 
     boolean isEnabledFor(Player player) {
-        return subscribers.contains(player.getUniqueId());
-    }
-
-    synchronized void stop() {
-        if (task != null) {
-            task.cancel();
-            task = null;
-        }
+        return subscribers.containsKey(player.getUniqueId());
     }
 
     synchronized void shutdown() {
+        subscribers.values().forEach(ScheduledTask::cancel);
         subscribers.clear();
-        stop();
     }
 
-    private void tick() {
-        subscribers.removeIf(id -> plugin.getServer().getPlayer(id) == null);
-        if (subscribers.isEmpty()) {
-            stop();
-            return;
-        }
-        for (UUID id : subscribers) {
-            Player player = plugin.getServer().getPlayer(id);
-            if (player != null) {
-                player.sendActionBar(Component.text(describe(player), NamedTextColor.AQUA));
-            }
-        }
+    private void tick(Player player) {
+        player.sendActionBar(Component.text(describe(player), NamedTextColor.AQUA));
     }
 
     private String describe(Player player) {
