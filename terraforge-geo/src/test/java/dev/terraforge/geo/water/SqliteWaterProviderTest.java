@@ -56,6 +56,36 @@ class SqliteWaterProviderTest {
     }
 
     @Test
+    void riversAreWidenedToTheConfiguredWidthAndLakesAreNot() throws Exception {
+        Path database = createDatabase();
+        insertWaterBody(database, "RIVER", 45.000, 7.0, 45.004, 8.0);
+        insertWaterBody(database, "LAKE", 46.000, 7.0, 46.004, 8.0);
+
+        WaterProvider plain = SqliteWaterProvider.load(database);
+        WaterProvider wide = SqliteWaterProvider.load(database, new dev.terraforge.core.cache.CacheManager(64),
+                4096, 0.0, null, RiverWidening.of(3.0, 1.0));
+        try {
+            // Half a kilometre north of the prepared strip: inside a three-block river, outside the strip.
+            assertThat(plain.waterTypeAt(45.009, 7.5)).isEqualTo(WaterType.NONE);
+            assertThat(wide.waterTypeAt(45.009, 7.5)).isEqualTo(WaterType.RIVER);
+            assertThat(wide.waterTypeAt(45.03, 7.5)).isEqualTo(WaterType.NONE);
+            assertThat(wide.waterTypeAt(46.009, 7.5)).isEqualTo(WaterType.NONE);
+        } finally {
+            close(plain);
+            close(wide);
+        }
+    }
+
+    @Test
+    void aRiverCarryingMoreWaterIsWider() {
+        RiverWidening widening = RiverWidening.of(3.0, 1.0);
+        assertThat(widening.widthBlocks(10.0)).isEqualTo(3.0);
+        assertThat(widening.widthBlocks(40.0)).isEqualTo(3.0);
+        assertThat(widening.widthBlocks(400.0)).isEqualTo(4.5);
+        assertThat(widening.widthBlocks(4000.0)).isEqualTo(6.0, org.assertj.core.data.Offset.offset(1e-9));
+    }
+
+    @Test
     void withSeaPolygonsLandBelowSeaLevelOutsideThemStaysDry() throws Exception {
         Path database = createDatabase();
         insertWaterBody(database, "OCEAN", 0, 0, 10, 10);

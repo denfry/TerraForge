@@ -62,10 +62,15 @@ public final class VegetationPlan {
      * @param deadBushDensity share of dead bushes kept, {@code 0..1}
      * @param plantsOnSand    grass, dry grass and sugar cane on sand
      */
-    public record Tuning(double reedDensity, double deadBushDensity, boolean plantsOnSand) {
+    public record Tuning(double reedDensity, double deadBushDensity, boolean plantsOnSand, boolean legacyClients) {
 
         /** Everything as calibrated. */
-        public static final Tuning CALIBRATED = new Tuning(1.0, 1.0, true);
+        public static final Tuning CALIBRATED = new Tuning(1.0, 1.0, true, false);
+
+        /** Every plant as on the server's version. */
+        public Tuning(double reedDensity, double deadBushDensity, boolean plantsOnSand) {
+            this(reedDensity, deadBushDensity, plantsOnSand, false);
+        }
 
         public Tuning {
             if (!(reedDensity >= 0.0 && reedDensity <= 1.0)) {
@@ -223,6 +228,12 @@ public final class VegetationPlan {
         }
 
         double treeChance = treeChance(biome, cover) * density * woodland(column.x(), column.z());
+        if (column.freshWaterDistance() <= BANK_CLEARANCE && biome != ClimateBiome.MANGROVE) {
+            // The bank itself stays open: a crown two blocks wide closes over a river from one block
+            // away, and from above the river vanishes under the canopy. Trees still crowd the strip
+            // behind it.
+            treeChance = 0.0;
+        }
         if (column.riparian()) {
             treeChance += riparianTreeBonus(biome) * density;
         }
@@ -265,6 +276,9 @@ public final class VegetationPlan {
      * from {@code random}, so every other column keeps its plant -- and keeps grass off sand.
      */
     private Placement tuned(Column column, Placement placement) {
+        if (tuning.legacyClients() && placement instanceof Placement.Cactus cactus && cactus.flower()) {
+            return new Placement.Cactus(cactus.height(), false); // a coral fan on top for 1.16
+        }
         if (!(placement instanceof Placement.Plant plant)) {
             return placement;
         }
@@ -276,8 +290,38 @@ public final class VegetationPlan {
         if (!tuning.plantsOnSand() && column.ground() == Material.SAND && SAND_GRASSES.contains(material)) {
             return Placement.None.INSTANCE;
         }
+        if (tuning.legacyClients()) {
+            return legacy(column, plant);
+        }
         return placement;
     }
+
+    /**
+     * A plant a 1.16 client draws correctly. ViaBackwards shows wildflowers, pink petals and leaf
+     * litter to such a client as brain coral fans -- pink coral across every meadow and forest floor
+     * -- so they become flowers of that version, or nothing.
+     */
+    private static Placement legacy(Column column, Placement.Plant plant) {
+        return switch (plant.material()) {
+            case WILDFLOWERS -> new Placement.Plant(LEGACY_WILDFLOWERS[Math.min(LEGACY_WILDFLOWERS.length - 1,
+                    (int) (CellNoise.at(column.x(), column.z(), LEGACY_SALT) * LEGACY_WILDFLOWERS.length))]);
+            case PINK_PETALS -> new Placement.Plant(Material.PINK_TULIP);
+            case LEAF_LITTER -> Placement.None.INSTANCE;
+            default -> plant;
+        };
+    }
+
+    private static final long LEGACY_SALT = 0x4C454741L;
+    private static final Material[] LEGACY_WILDFLOWERS = {
+        Material.DANDELION, Material.OXEYE_DAISY, Material.AZURE_BLUET, Material.CORNFLOWER, Material.POPPY,
+    };
+    /** Whether plants are limited to what a 1.16 client draws correctly. */
+    public boolean legacyClients() {
+        return tuning.legacyClients();
+    }
+
+    /** No tree stands this close to a river or lake. */
+    static final int BANK_CLEARANCE = 2;
 
     private static final java.util.Set<Material> SAND_GRASSES = java.util.EnumSet.of(
             Material.SHORT_GRASS, Material.TALL_GRASS, Material.SHORT_DRY_GRASS, Material.TALL_DRY_GRASS,

@@ -44,7 +44,7 @@ public record TerraForgeConfig(
                 new EarthSection(new OriginSection(51.0, 10.0), "equirectangular"),
                 new TerrainSection(63, -64, 320, 1.0, 1.0, 0.0, 8, TerrainSection.DEFAULT_SMOOTHING, 0.0,
                         null, null, 1.0),
-                new WaterSection(true, true, true, 30.0, 1.0),
+                new WaterSection(true, true, true, 30.0, 1.0, null, null, null, null, 2.0),
                 new BiomesSection(true, 0.35),
                 new GenerationSection(true, false, false, false, false, 4, VegetationSection.defaults()),
                 PregenerationSection.defaults(),
@@ -226,7 +226,7 @@ public record TerraForgeConfig(
     public record WaterSection(boolean oceans, boolean lakes, boolean rivers, double defaultOceanDepth,
                                 double minVisibleRiverDischargeCms, Integer minLakeDepthBlocks,
                                 Integer minRiverDepthBlocks, Integer minOceanDepthBlocks,
-                                Integer shoreBlendBlocks) {
+                                Integer shoreBlendBlocks, Double riverMinWidthBlocks) {
 
         public static final int DEFAULT_MIN_LAKE_DEPTH = 3;
         public static final int DEFAULT_MIN_RIVER_DEPTH = 2;
@@ -246,12 +246,23 @@ public record TerraForgeConfig(
             if (shoreBlendBlocks == null) {
                 shoreBlendBlocks = DEFAULT_SHORE_BLEND;
             }
+            if (riverMinWidthBlocks == null) {
+                riverMinWidthBlocks = 1.0; // as prepared
+            }
+        }
+
+        /** Rivers as prepared. */
+        public WaterSection(boolean oceans, boolean lakes, boolean rivers, double defaultOceanDepth,
+                            double minVisibleRiverDischargeCms, Integer minLakeDepthBlocks,
+                            Integer minRiverDepthBlocks, Integer minOceanDepthBlocks, Integer shoreBlendBlocks) {
+            this(oceans, lakes, rivers, defaultOceanDepth, minVisibleRiverDischargeCms, minLakeDepthBlocks,
+                    minRiverDepthBlocks, minOceanDepthBlocks, shoreBlendBlocks, null);
         }
 
         /** The five older switches, with the depth floors at their defaults. */
         public WaterSection(boolean oceans, boolean lakes, boolean rivers, double defaultOceanDepth,
                             double minVisibleRiverDischargeCms) {
-            this(oceans, lakes, rivers, defaultOceanDepth, minVisibleRiverDischargeCms, null, null, null, null);
+            this(oceans, lakes, rivers, defaultOceanDepth, minVisibleRiverDischargeCms, null, null, null, null, null);
         }
     }
 
@@ -392,7 +403,7 @@ public record TerraForgeConfig(
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record VegetationSection(boolean enabled, double density, Boolean customTrees, Boolean farmland,
                                     Double farmlandShare, Double reedDensity, Double deadBushDensity,
-                                    Boolean plantsOnSand) {
+                                    Boolean plantsOnSand, Boolean legacyClients) {
 
         public static final double DEFAULT_FARMLAND_SHARE = 0.25;
 
@@ -418,12 +429,23 @@ public record TerraForgeConfig(
             if (plantsOnSand == null) {
                 plantsOnSand = Boolean.TRUE;
             }
+            if (legacyClients == null) {
+                legacyClients = Boolean.FALSE;
+            }
+        }
+
+        /** Without the legacy-client switch: every plant as on the server's version. */
+        public VegetationSection(boolean enabled, double density, Boolean customTrees, Boolean farmland,
+                                 Double farmlandShare, Double reedDensity, Double deadBushDensity,
+                                 Boolean plantsOnSand) {
+            this(enabled, density, customTrees, farmland, farmlandShare, reedDensity, deadBushDensity,
+                    plantsOnSand, null);
         }
 
         /** Without the sand and reed settings: everything as calibrated. */
         public VegetationSection(boolean enabled, double density, Boolean customTrees, Boolean farmland,
                                  Double farmlandShare) {
-            this(enabled, density, customTrees, farmland, farmlandShare, null, null, null);
+            this(enabled, density, customTrees, farmland, farmlandShare, null, null, null, null);
         }
 
         /** Without a farmland share: the default share. */
@@ -432,7 +454,7 @@ public record TerraForgeConfig(
         }
 
         public static VegetationSection defaults() {
-            return new VegetationSection(true, 1.0, true, true, DEFAULT_FARMLAND_SHARE, 1.0, 1.0, true);
+            return new VegetationSection(true, 1.0, true, true, DEFAULT_FARMLAND_SHARE, 1.0, 1.0, true, false);
         }
     }
 

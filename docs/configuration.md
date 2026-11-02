@@ -98,6 +98,7 @@ cost of blurring ridges over five kilometres.
 | `min-river-depth-blocks` | `2` | the same for rivers |
 | `min-ocean-depth-blocks` | `6` | the same for the sea |
 | `shore-blend-blocks` | `4` | how far a shore's influence reaches: banks slope in, beds shelve out |
+| `river-min-width-blocks` | `1` (`2` in a new config) | width of the smallest river, `1..8`; more discharge widens it, half again per tenfold over 40 m³/s. Applied while generating; no re-preparation |
 
 The depth floors exist because real depths are small next to a coarse vertical scale: at 20 m per
 block a 6 m lake, a 2 m river and the 30 m default ocean all round to one block of water over a flat
@@ -209,6 +210,7 @@ is named for what it does rather than for what one might want from it.
 | `reed-density` | `1.0` | share of sugar cane kept beside water, `0..1` |
 | `dead-bush-density` | `1.0` | share of dead bushes kept, `0..1` |
 | `plants-on-sand` | `true` | grass, dry grass and sugar cane on sand; `false` leaves sand to cacti and dead bushes |
+| `legacy-clients` | `false` | only plants a 1.16 client draws correctly: no wildflowers, pink petals, leaf litter or cactus flowers, which ViaBackwards shows as coral fans |
 
 This is the vegetation `vanilla-decorations` cannot give a scaled world. It runs as a Paper
 `BlockPopulator` on the chunk and its one-chunk buffer, in this world's vertical frame, and places

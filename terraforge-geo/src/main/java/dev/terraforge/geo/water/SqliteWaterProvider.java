@@ -68,6 +68,17 @@ public final class SqliteWaterProvider {
     public static WaterProvider load(Path database, CacheManager cacheManager, int maxResidentFeatures,
                                       double minVisibleRiverDischargeCms, Path catalogueCacheDirectory)
             throws IOException {
+        return load(database, cacheManager, maxResidentFeatures, minVisibleRiverDischargeCms,
+                catalogueCacheDirectory, RiverWidening.NONE);
+    }
+
+    /**
+     * As {@link #load(Path, CacheManager, int, double, Path)}, widening every river as
+     * {@code widening} says when its geometry is decoded.
+     */
+    public static WaterProvider load(Path database, CacheManager cacheManager, int maxResidentFeatures,
+                                      double minVisibleRiverDischargeCms, Path catalogueCacheDirectory,
+                                      RiverWidening widening) throws IOException {
         if (maxResidentFeatures <= 0) {
             throw new IllegalArgumentException(
                     "cache.water-feature-cache-entries must be positive: " + maxResidentFeatures);
@@ -87,7 +98,7 @@ public final class SqliteWaterProvider {
                     "SELECT geometry FROM water_bodies WHERE id = ?");
             ManagedCache<Long, Optional<PreparedGeometry>> geometries =
                     cacheManager.newCache("water-features", maxResidentFeatures);
-            return new LazySqliteWaterProvider(connection, geometryById, entries, geometries);
+            return new LazySqliteWaterProvider(connection, geometryById, entries, geometries, widening);
         } catch (IOException exception) {
             closeQuietly(connection);
             throw new IOException("Cannot load natural water data from " + database + ": "

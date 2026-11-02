@@ -480,7 +480,7 @@ public final class TerraForgeChunkGenerator extends ChunkGenerator {
                     generation.vanillaDecorations(), vegetation.enabled(), vegetation.density(),
                     vegetation.customTrees(), vegetation.farmland(), generation.underground(),
                     vegetation.farmlandShare(), new VegetationPlan.Tuning(vegetation.reedDensity(),
-                            vegetation.deadBushDensity(), vegetation.plantsOnSand()));
+                            vegetation.deadBushDensity(), vegetation.plantsOnSand(), vegetation.legacyClients()));
         }
     }
 }

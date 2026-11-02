@@ -107,20 +107,20 @@ public final class SurfacePalette {
         return new Layers(Material.SNOW_BLOCK, Material.STONE);
     }
 
-    /** Bare rock: stone 55 %, andesite 15 %, gravel 15 %, tuff 5 %, snow 10 % in sheltered patches. */
+    /**
+     * Bare rock: stone 55 %, andesite 20 %, gravel 15 %, snow 10 % in sheltered patches. No tuff: a 1.16
+     * client through ViaBackwards draws it as cobblestone, which looks laid by hand.
+     */
     static Layers bareRock(int x, int z) {
         double draw = patch(x, z);
         if (draw < 0.55) {
             return new Layers(Material.STONE, Material.STONE);
         }
-        if (draw < 0.70) {
+        if (draw < 0.75) {
             return new Layers(Material.ANDESITE, Material.STONE);
         }
-        if (draw < 0.85) {
-            return new Layers(Material.GRAVEL, Material.STONE);
-        }
         if (draw < 0.90) {
-            return new Layers(Material.TUFF, Material.STONE);
+            return new Layers(Material.GRAVEL, Material.STONE);
         }
         return new Layers(Material.SNOW_BLOCK, Material.STONE);
     }

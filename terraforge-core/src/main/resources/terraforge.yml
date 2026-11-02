@@ -103,6 +103,11 @@ water:
   # so a lake is a basin with sloping banks rather than a slab in a pit. 0 leaves shores as the
   # data has them. Each chunk samples a margin this wide, so the cost grows with it.
   shore-blend-blocks: 4
+  # Width of the smallest river, in blocks, 1..8; larger rivers get half as much again per tenfold
+  # discharge over 40 m³/s. Prepared rivers are one block wide at 1 block/km: too narrow for a boat
+  # and hidden under the trees on their banks. Applied as the world generates; no re-preparation.
+  # 1 keeps rivers as prepared.
+  river-min-width-blocks: 2.0
 
 biomes:
   enabled: true
@@ -163,6 +168,11 @@ generation:
     dead-bush-density: 1.0
     # Grass, dry grass and sugar cane on sand. false leaves dunes and beaches to cacti and dead bushes.
     plants-on-sand: true
+    # Only plants a 1.16 client draws correctly. Through ViaBackwards such a client sees wildflowers,
+    # pink petals, leaf litter and cactus flowers as brain coral fans; with this on, wildflowers and
+    # petals become classic flowers and the other two are left out. Turn on when players join on
+    # versions before 1.19.4.
+    legacy-clients: false
 
   # What lies under the ground, generated with the chunk on the generation threads -- never patched
   # into a live world afterwards. Heights follow this world's sea level and floor, not vanilla's, so

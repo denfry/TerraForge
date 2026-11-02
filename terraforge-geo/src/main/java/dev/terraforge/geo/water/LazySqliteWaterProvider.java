@@ -50,15 +50,25 @@ final class LazySqliteWaterProvider implements WaterProvider, AutoCloseable {
      * below sea level stays dry.
      */
     private final boolean hasOcean;
+    /** How far each river is widened beyond its prepared polygon; {@link RiverWidening#NONE} keeps them. */
+    private final RiverWidening widening;
 
     LazySqliteWaterProvider(Connection connection, PreparedStatement geometryById, List<CatalogEntry> entries,
                              ManagedCache<Long, Optional<PreparedGeometry>> geometries) {
+        this(connection, geometryById, entries, geometries, RiverWidening.NONE);
+    }
+
+    LazySqliteWaterProvider(Connection connection, PreparedStatement geometryById, List<CatalogEntry> entries,
+                             ManagedCache<Long, Optional<PreparedGeometry>> geometries, RiverWidening widening) {
         this.connection = connection;
         this.geometryById = geometryById;
         this.geometries = geometries;
+        this.widening = widening;
         this.index = new STRtree();
         for (CatalogEntry entry : entries) {
-            index.insert(entry.envelope(), entry);
+            Envelope envelope = new Envelope(entry.envelope());
+            envelope.expandBy(widening.extraRadiusDegrees(entry));
+            index.insert(envelope, entry);
         }
         index.build();
         this.hasOcean = entries.stream().anyMatch(entry -> entry.type() == WaterType.OCEAN);
@@ -158,6 +168,10 @@ final class LazySqliteWaterProvider implements WaterProvider, AutoCloseable {
                         return Optional.empty();
                     }
                     Geometry geometry = new WKBReader().read(rows.getBytes("geometry"));
+                    double extra = widening.extraRadiusDegrees(entry);
+                    if (extra > 0.0) {
+                        geometry = geometry.buffer(extra, 4);
+                    }
                     return Optional.of(PreparedGeometryFactory.prepare(geometry));
                 }
             } catch (Exception exception) {

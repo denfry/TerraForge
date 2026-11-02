@@ -39,6 +39,13 @@ not optional:
   and gullies, and slopes become even contour steps; the detail adds noise that follows the local
   slope -- a block or two on a plain, up to ten on a mountain side. Absent means `0`; a new config
   sets `1.0`.
+- `water.river-min-width-blocks`: rivers are widened as the world generates, to at least this many
+  blocks and half as much again per tenfold discharge over 40 m³/s. Prepared rivers are one block
+  wide at 1 block/km -- too narrow for a boat, and three quarters of them hidden under the trees on
+  their banks. No re-preparation; `1` keeps them as prepared, a new config sets `2`.
+- `generation.vegetation.legacy-clients`: only plants a 1.16 client draws correctly. Through
+  ViaBackwards such a client sees wildflowers, pink petals, leaf litter and cactus flowers as brain
+  coral fans; with this on they become classic flowers or are left out.
 - `generation.vegetation.reed-density`, `dead-bush-density` and `plants-on-sand`.
 - `generation.underground.emerald-multiplier`.
 - `generation.underground`: ores, stone pockets and cave systems, generated with the chunk on the
@@ -139,6 +146,8 @@ not optional:
 
 ### Changed
 
+- No tree grows within two blocks of a river or lake, so crowns no longer close over the water.
+- Bare rock has no tuff, which a 1.16 client draws as cobblestone.
 - Trees grow in woods and clearings: the tree chance follows low-frequency noise instead of being the
   same on every column, which drew forests as an evenly dotted grid.
 - Dark oak in the broadleaf forest, more cocoa in the jungle, kelp on the deep sea floor. Kelp stalks

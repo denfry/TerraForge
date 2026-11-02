@@ -104,6 +104,8 @@ public final class ConfigLoader {
         double deadBushDensity = config.generation().vegetation().deadBushDensity();
         require(deadBushDensity >= 0.0 && deadBushDensity <= 1.0,
                 "generation.vegetation.dead-bush-density must be between 0 and 1");
+        double riverWidth = config.water().riverMinWidthBlocks();
+        require(riverWidth >= 1.0 && riverWidth <= 8.0, "water.river-min-width-blocks must be between 1 and 8");
         TerraForgeConfig.UndergroundSection underground = config.generation().underground();
         require(underground.oreMultiplier() >= 0.0 && Double.isFinite(underground.oreMultiplier()),
                 "generation.underground.ore-multiplier must not be negative");
