@@ -336,7 +336,9 @@ class VegetationPlanTest {
         assertThat(temperate.kelp).isGreaterThan(COLUMNS / 40);
         assertThat(warm.kelp).isZero();
         assertThat(frozen.anything()).isZero();
-        assertThat(abyss.coral + abyss.kelp).isZero();
+        // Kelp grows on the deep floor too, thinner than on the shelf; never coral.
+        assertThat(abyss.coral).isZero();
+        assertThat(abyss.kelp).isBetween(1, temperate.kelp);
         assertThat(abyss.seagrass).isLessThan(COLUMNS / 10);
     }
 
@@ -395,8 +397,9 @@ class VegetationPlanTest {
         Random random = new Random(42);
         Tally tally = new Tally();
         for (int i = 0; i < COLUMNS; i++) {
-            // Spread the columns over ground, so the patch noise is sampled and not one cell.
-            tally.add(plan.choose(Column.plain(sample, ground, i % 141, i / 141), random));
+            // Spread the columns over ground, so the patch noise is sampled and not one cell -- and
+            // over kilometres, not one 141-block square: woods and clearings are a hundred blocks across.
+            tally.add(plan.choose(Column.plain(sample, ground, (i % 141) * 29, (i / 141) * 31), random));
         }
         return tally;
     }

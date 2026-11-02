@@ -34,7 +34,8 @@ class ClimateBiomeResolverTest {
         double latitude = 46.0; // the Alps
         assertThat(land(latitude, 600.0, LandcoverClass.TREE_COVER)).isEqualTo(ClimateBiome.TEMPERATE_FOREST);
         assertThat(land(latitude, 1200.0, LandcoverClass.TREE_COVER)).isEqualTo(ClimateBiome.MOUNTAIN_FOREST);
-        assertThat(land(latitude, 2000.0, LandcoverClass.TREE_COVER)).isEqualTo(ClimateBiome.ALPINE);
+        // Alpine above the 2100 m treeline, permanent snow above about 3000 m.
+        assertThat(land(latitude, 2400.0, LandcoverClass.TREE_COVER)).isEqualTo(ClimateBiome.ALPINE);
         assertThat(land(latitude, 4000.0, LandcoverClass.TREE_COVER)).isEqualTo(ClimateBiome.GLACIER);
     }
 

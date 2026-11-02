@@ -49,6 +49,7 @@ See [projection.md](projection.md) for the resulting world sizes.
 | `bedrock-thickness` | `8` | bedrock layers at the world bottom |
 | `smoothing` | `3.0` | width in blocks of the ground a column's height is averaged over (`1.0` = the block's own footprint only) |
 | `relief-curve-meters` | `0` | knee of the relief curve in metres; `0` keeps the vertical scale linear |
+| `detail` | `0` (`1.0` in a new config) | relief detail on land, `0..3`; `0` keeps the averaged DEM surface |
 | `generated-min-y` | `min-y` | lowest Y terrain is generated at; the bedrock starts here, the world below stays empty |
 | `generated-max-y` | `max-y` | one above the highest Y terrain may reach |
 
@@ -205,6 +206,9 @@ is named for what it does rather than for what one might want from it.
 | `custom-trees` | `true` | draw TerraForge's own procedural trees alongside vanilla's |
 | `farmland` | `true` | till flat cropland into crop fields |
 | `farmland-share` | `0.25` | share of flat cropland plots that are tilled; the rest grow as meadow |
+| `reed-density` | `1.0` | share of sugar cane kept beside water, `0..1` |
+| `dead-bush-density` | `1.0` | share of dead bushes kept, `0..1` |
+| `plants-on-sand` | `true` | grass, dry grass and sugar cane on sand; `false` leaves sand to cacti and dead bushes |
 
 This is the vegetation `vanilla-decorations` cannot give a scaled world. It runs as a Paper
 `BlockPopulator` on the chunk and its one-chunk buffer, in this world's vertical frame, and places
@@ -275,6 +279,7 @@ pass, now named `generation.vanilla-decorations`.
 | `stone-variety` | `true` | dirt, gravel, granite, diorite, andesite, tuff and blackstone pockets |
 | `caves` | `true` | winding cave systems under land |
 | `cave-rarity` | `7.0` | one cave system starts in one chunk of this many; lower means more caves |
+| `emerald-multiplier` | `1.0` | multiplier on emerald ore alone, on top of `ore-multiplier` |
 
 What `vanilla-decorations` and `vanilla-caves` cannot give a scaled world. The pass runs inside
 chunk generation, on Paper's generation threads: it models the chunk's stone from the samples the

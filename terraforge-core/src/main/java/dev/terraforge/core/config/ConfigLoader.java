@@ -80,6 +80,8 @@ public final class ConfigLoader {
                 "terrain.generated-min-y..generated-max-y must lie inside terrain.min-y..max-y");
         require(terrain.seaLevel() > terrain.generatedMinY() && terrain.seaLevel() < terrain.generatedMaxY(),
                 "terrain.sea-level must lie between terrain.generated-min-y and terrain.generated-max-y");
+        require(terrain.detail() >= 0.0 && terrain.detail() <= 3.0,
+                "terrain.detail must be between 0 and 3 (0 keeps the averaged DEM surface)");
         require(terrain.reliefCurveMeters() >= 0.0 && Double.isFinite(terrain.reliefCurveMeters()),
                 "terrain.relief-curve-meters must not be negative (0 keeps the vertical scale linear)");
 
@@ -96,11 +98,19 @@ public final class ConfigLoader {
         double farmlandShare = config.generation().vegetation().farmlandShare();
         require(farmlandShare >= 0.0 && farmlandShare <= 1.0,
                 "generation.vegetation.farmland-share must be between 0 and 1");
+        double reedDensity = config.generation().vegetation().reedDensity();
+        require(reedDensity >= 0.0 && reedDensity <= 1.0,
+                "generation.vegetation.reed-density must be between 0 and 1");
+        double deadBushDensity = config.generation().vegetation().deadBushDensity();
+        require(deadBushDensity >= 0.0 && deadBushDensity <= 1.0,
+                "generation.vegetation.dead-bush-density must be between 0 and 1");
         TerraForgeConfig.UndergroundSection underground = config.generation().underground();
         require(underground.oreMultiplier() >= 0.0 && Double.isFinite(underground.oreMultiplier()),
                 "generation.underground.ore-multiplier must not be negative");
         require(underground.caveRarity() >= 1.0 && Double.isFinite(underground.caveRarity()),
                 "generation.underground.cave-rarity must be at least 1");
+        require(underground.emeraldMultiplier() >= 0.0 && Double.isFinite(underground.emeraldMultiplier()),
+                "generation.underground.emerald-multiplier must not be negative");
 
         TerraForgeConfig.PregenerationSection pregeneration = config.pregeneration();
         require(pregeneration != null, "pregeneration section must be present");

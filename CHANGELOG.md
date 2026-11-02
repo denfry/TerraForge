@@ -9,7 +9,7 @@ format. Both are stated explicitly per release, because either one means regener
 
 ## [Unreleased]
 
-**Generation changes again in this release** (shores, relief curve, underground): regenerate rather
+**Generation changes again in this release** (shores, relief curve, underground, relief detail, biome borders, surfaces, vegetation): regenerate rather
 than mix old and new chunks.
 
 **This release changes both the prepared data format and the world format.** Two migrations are
@@ -30,6 +30,17 @@ not optional:
 
 ### Added
 
+- **Folia support.** The plugin declares `folia-supported` and runs on Folia and its forks: repeating
+  tasks use the global region, async and player schedulers, the edge guard teleports mounts and
+  vehicles asynchronously, and pregeneration serialises its callbacks on the global region thread.
+  Folia reports TPS and MSPT per region only, so pregeneration's health check reads the region it
+  is loading chunks in.
+- `terrain.detail`: relief detail on land. A column averaged over a kilometre loses its knolls, spurs
+  and gullies, and slopes become even contour steps; the detail adds noise that follows the local
+  slope -- a block or two on a plain, up to ten on a mountain side. Absent means `0`; a new config
+  sets `1.0`.
+- `generation.vegetation.reed-density`, `dead-bush-density` and `plants-on-sand`.
+- `generation.underground.emerald-multiplier`.
 - `generation.underground`: ores, stone pockets and cave systems, generated with the chunk on the
   generation threads and written to it once -- never patched into a live world. Vanilla 1.16's ore
   table (coal, iron, gold, redstone, lapis, diamond, emerald under mountains) plus copper, kept at
@@ -128,6 +139,21 @@ not optional:
 
 ### Changed
 
+- Trees grow in woods and clearings: the tree chance follows low-frequency noise instead of being the
+  same on every column, which drew forests as an evenly dotted grid.
+- Dark oak in the broadleaf forest, more cocoa in the jungle, kelp on the deep sea floor. Kelp stalks
+  stop between one and eight blocks below the surface, at half that length and at most 25 blocks,
+  with a fully grown tip.
+- The treeline and snowline follow a table by latitude instead of a straight line: the snowline
+  peaks in the dry subtropics and sits at about 3000 m in the Alps, where it was 2000 m.
+- The snowline, treeline, shelf break and the edge of the warm ocean wander around their values with
+  position, and so does the latitude that picks cold, snowy and lukewarm variants. Biome borders are
+  ragged instead of a contour line or a parallel.
+- Lukewarm oceans between the tropics and 40 degrees.
+- The alpine belt is grass, scree, rock and patches of snow instead of a snow sheet, and maps to a
+  meadow below 55 degrees; bare rock mixes stone, andesite, gravel, tuff and snow.
+- Shrubland in the subtropics maps to savanna instead of sparse jungle.
+- The sea bed is sand, gravel, clay and mud; bone blocks and obsidian are gone.
 - **Breaking for third-party providers** (`terraforge-core` publishes to mavenLocal):
   `WaterProvider.waterSurfaceElevation` and `riverBedDepthMeters` are gone, replaced by one
   `waterColumnAt(latitude, longitude, knownElevationMeters)` returning a
@@ -155,6 +181,15 @@ not optional:
 
 ### Fixed
 
+- Each DEM tile is mapped once per reader. Every cache miss used to map the file again while the old
+  mapping waited for a GC; a planet-wide pregeneration reached the kernel's `vm.max_map_count` and
+  the JVM died.
+- The sea is water again with a prepared database built from the default sources. They hold lakes
+  and rivers but no sea polygons, and the database was trusted alone: every sea came out as a dry
+  sand plain at the depth of its bed. Without sea polygons, ground below sea level outside every
+  feature is ocean, as it is without a database.
+- A lake over its own bathymetry (the Caspian with GEBCO) is water again, with the measured bed; it
+  was rejected as an implausible surface and left a dry pit.
 - Shores no longer end in a wall. The bank and shelf limits of `water.shore-blend-blocks` stopped
   dead at their reach, so high land behind a beach rose as a cliff exactly that far inland and a deep
   bed dropped sheer beyond its shelf; both now fade out across the reach.

@@ -131,7 +131,8 @@ public final class VegetationPopulator extends BlockPopulator {
                     region.setType(x, cy, z, Material.KELP_PLANT);
                 }
                 Ageable tip = (Ageable) Material.KELP.createBlockData();
-                tip.setAge(Math.min(tip.getMaximumAge(), 15 + random.nextInt(10)));
+                // Fully grown: a younger tip keeps growing to the surface, undoing the stalk's height.
+                tip.setAge(tip.getMaximumAge());
                 region.setBlockData(x, top, z, tip);
             }
             case Placement.Coral coral -> {

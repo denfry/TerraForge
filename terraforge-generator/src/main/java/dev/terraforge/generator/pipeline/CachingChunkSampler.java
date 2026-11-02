@@ -27,6 +27,9 @@ public final class CachingChunkSampler implements ChunkSampler {
     private final CoordinateTransformer transformer;
     private final ManagedCache<Long, ChunkSamples> cache;
     private final double smoothing;
+    private final double detail;
+    private final int detailMinY;
+    private final int detailMaxY;
     private final int shoreReach;
 
     /** Averages exactly the block's own ground: no smoothing. */
@@ -56,6 +59,18 @@ public final class CachingChunkSampler implements ChunkSampler {
      */
     public CachingChunkSampler(TerrainPipeline pipeline, CoordinateTransformer transformer,
                                CacheManager cacheManager, int maxChunks, double smoothing, int shoreReach) {
+        this(pipeline, transformer, cacheManager, maxChunks, smoothing, shoreReach, 0.0, Integer.MIN_VALUE,
+                Integer.MAX_VALUE);
+    }
+
+    /**
+     * @param detail     strength of {@link ReliefDetail} ({@code terrain.detail}); {@code 0} adds none
+     * @param detailMinY lowest surface the detail may push a column to
+     * @param detailMaxY highest surface the detail may push a column to
+     */
+    public CachingChunkSampler(TerrainPipeline pipeline, CoordinateTransformer transformer,
+                               CacheManager cacheManager, int maxChunks, double smoothing, int shoreReach,
+                               double detail, int detailMinY, int detailMaxY) {
         if (!(smoothing >= 1.0) || !Double.isFinite(smoothing)) {
             throw new IllegalArgumentException("smoothing must be at least 1.0: " + smoothing);
         }
@@ -66,6 +81,9 @@ public final class CachingChunkSampler implements ChunkSampler {
         this.transformer = transformer;
         this.cache = cacheManager.newCache("chunk-samples", maxChunks);
         this.smoothing = smoothing;
+        this.detail = detail;
+        this.detailMinY = detailMinY;
+        this.detailMaxY = detailMaxY;
         this.shoreReach = shoreReach;
     }
 
@@ -87,7 +105,9 @@ public final class CachingChunkSampler implements ChunkSampler {
         double baseZ = chunkZ * 16.0;
         // The chunk plus a margin of shoreReach columns on every side, so a shore just over the
         // border shapes this chunk's edge exactly as it shapes the neighbour's.
-        int margin = shoreReach;
+        // With relief detail, two more: one for the slope a detailed column is read from, one so the
+        // shore shaper only ever sees detailed columns.
+        int margin = detail > 0.0 ? shoreReach + 2 : shoreReach;
         int width = ChunkSamples.SIZE + 2 * margin;
         TerrainSample[] grid = new TerrainSample[width * width];
         for (int gz = 0; gz < width; gz++) {
@@ -97,6 +117,7 @@ public final class CachingChunkSampler implements ChunkSampler {
                         point.latitude(), point.longitude(), latitudeSpan, longitudeSpan);
             }
         }
+        ReliefDetail.apply(grid, width, chunkX * 16 - margin, chunkZ * 16 - margin, detail, detailMinY, detailMaxY);
         ShoreShaper.shape(grid, width, shoreReach, margin);
         if (margin == 0) {
             return new ChunkSamples(chunkX, chunkZ, bounds, grid);

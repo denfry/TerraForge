@@ -25,6 +25,8 @@ public final class SurfacePalette {
     private static final long SEABED_SALT = 0x5EABED0000000001L;
     private static final long SEABED_JITTER_SALT = 0x5EABED0000000002L;
     private static final long ICE_SALT = 0x1CE5A1700000003L;
+    private static final long MOUNTAIN_SALT = 0x4D4F554E54000004L;
+    private static final int MOUNTAIN_PATCH = 4;
     private static final int SEABED_PATCH = 5;
     private static final int ICE_PATCH = 4;
     /** Share of sea-bed columns that ignore their patch and draw on their own, so patches have ragged edges. */
@@ -51,6 +53,8 @@ public final class SurfacePalette {
                 yield new Layers(bed, bed);
             }
             case GLACIER -> iceSheet(x, z);
+            case ALPINE -> alpine(x, z);
+            case BARE_ROCK -> bareRock(x, z);
             default -> forBiome(biome);
         };
     }
@@ -72,7 +76,7 @@ public final class SurfacePalette {
             case MANGROVE -> new Layers(Material.MUD, Material.MUD);
 
             case TUNDRA -> new Layers(Material.SNOW_BLOCK, Material.DIRT);
-            case ALPINE -> new Layers(Material.SNOW_BLOCK, Material.STONE);
+            case ALPINE -> new Layers(Material.GRASS_BLOCK, Material.DIRT);
             case GLACIER -> new Layers(Material.SNOW_BLOCK, Material.SNOW_BLOCK);
 
             case MOUNTAIN_FOREST -> new Layers(Material.GRASS_BLOCK, Material.DIRT);
@@ -82,7 +86,55 @@ public final class SurfacePalette {
     }
 
     /**
-     * The sea bed: gravel 25 %, sand 35 %, clay 15 %, bone blocks 20 %, obsidian 5 %.
+     * The alpine belt above the treeline: grass with scree, rock and late snow -- grass 50 %, coarse
+     * dirt 15 %, stone 15 %, gravel 12 %, snow 8 %. It used to be snow throughout, which drew the
+     * treeline across every mountain as the edge of a white sheet.
+     */
+    static Layers alpine(int x, int z) {
+        double draw = patch(x, z);
+        if (draw < 0.50) {
+            return new Layers(Material.GRASS_BLOCK, Material.DIRT);
+        }
+        if (draw < 0.65) {
+            return new Layers(Material.COARSE_DIRT, Material.DIRT);
+        }
+        if (draw < 0.80) {
+            return new Layers(Material.STONE, Material.STONE);
+        }
+        if (draw < 0.92) {
+            return new Layers(Material.GRAVEL, Material.STONE);
+        }
+        return new Layers(Material.SNOW_BLOCK, Material.STONE);
+    }
+
+    /** Bare rock: stone 55 %, andesite 15 %, gravel 15 %, tuff 5 %, snow 10 % in sheltered patches. */
+    static Layers bareRock(int x, int z) {
+        double draw = patch(x, z);
+        if (draw < 0.55) {
+            return new Layers(Material.STONE, Material.STONE);
+        }
+        if (draw < 0.70) {
+            return new Layers(Material.ANDESITE, Material.STONE);
+        }
+        if (draw < 0.85) {
+            return new Layers(Material.GRAVEL, Material.STONE);
+        }
+        if (draw < 0.90) {
+            return new Layers(Material.TUFF, Material.STONE);
+        }
+        return new Layers(Material.SNOW_BLOCK, Material.STONE);
+    }
+
+    /** A draw per four-block patch, a fifth of the columns on their own so patches have ragged edges. */
+    private static double patch(int x, int z) {
+        return CellNoise.at(x, z, MOUNTAIN_SALT + 1) < SEABED_JITTER
+                ? CellNoise.at(x, z, MOUNTAIN_SALT)
+                : CellNoise.cell(x, z, MOUNTAIN_PATCH, MOUNTAIN_SALT);
+    }
+
+    /**
+     * The sea bed: sand 45 %, gravel 30 %, clay 15 %, mud 10 %. Bone blocks and obsidian, a quarter
+     * of the floor before, read as a white and black chequerboard under every shallow sea.
      *
      * <p>Chosen per five-block patch rather than per block, so the floor reads as sand banks, clay
      * beds and bone fields rather than static; a fifth of the columns draw on their own so the
@@ -92,19 +144,16 @@ public final class SurfacePalette {
         double draw = CellNoise.at(x, z, SEABED_JITTER_SALT) < SEABED_JITTER
                 ? CellNoise.at(x, z, SEABED_SALT)
                 : CellNoise.cell(x, z, SEABED_PATCH, SEABED_SALT);
-        if (draw < 0.35) {
+        if (draw < 0.45) {
             return Material.SAND;
         }
-        if (draw < 0.60) {
+        if (draw < 0.75) {
             return Material.GRAVEL;
         }
-        if (draw < 0.80) {
-            return Material.BONE_BLOCK;
-        }
-        if (draw < 0.95) {
+        if (draw < 0.90) {
             return Material.CLAY;
         }
-        return Material.OBSIDIAN;
+        return Material.MUD;
     }
 
     /** The ice sheet: snow, with packed-ice patches on a tenth of it. */

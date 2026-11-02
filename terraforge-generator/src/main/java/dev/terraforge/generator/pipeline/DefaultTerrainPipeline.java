@@ -98,7 +98,8 @@ public final class DefaultTerrainPipeline implements TerrainPipeline {
             // substituted fallback -- not sea level, and not NaN. The column is already flagged.
             waterSurfaceMeters = meters;
         }
-        if (waterType.isWater() && !placeable(waterType, waterSurfaceMeters, rawMeters,
+        boolean bathymetricLake = waterType == WaterType.LAKE && bathymetricLakeBed(waterSurfaceMeters, rawMeters);
+        if (waterType.isWater() && !bathymetricLake && !placeable(waterType, waterSurfaceMeters, rawMeters,
                 column.bedDepthMeters())) {
             // An unknown or implausible water surface means this water body cannot be placed here.
             // It must never fall back to sea level: doing so drags the whole column down to y=0,
@@ -112,6 +113,11 @@ public final class DefaultTerrainPipeline implements TerrainPipeline {
             // bathymetry. The bed is carved below the water's own surface, so the surrounding real
             // valley -- and a mountain lake's real altitude -- stay intact.
             meters = waterSurfaceMeters - column.bedDepthMeters();
+            if (bathymetricLake) {
+                // The DEM already measures this lake's bed: deeper than the register's mean depth
+                // in the middle of the Caspian, shallower near its shores.
+                meters = Math.min(meters, rawMeters);
+            }
         }
 
         // Below the surface of the ocean the terrain is the sea bed. Without bathymetry the DEM
@@ -129,7 +135,7 @@ public final class DefaultTerrainPipeline implements TerrainPipeline {
         }
 
         LandcoverClass cover = landcover.landcoverAt(latitude, longitude);
-        ClimateBiome biome = biomeResolver.resolve(latitude, meters, waterType, cover);
+        ClimateBiome biome = biomeResolver.resolve(latitude, longitude, meters, waterType, cover);
 
         int surfaceY = verticalScale.toBlockY(meters);
         int waterSurfaceY = waterType.isWater()
@@ -213,6 +219,23 @@ public final class DefaultTerrainPipeline implements TerrainPipeline {
         }
         return Math.abs(surfaceMeters - demMeters) <= bedDepthMeters + LAKE_SURFACE_AGREEMENT_METERS;
     }
+
+    /**
+     * Whether the DEM under a lake is its bathymetric bed rather than its surface. A DEM with
+     * bathymetry (GEBCO) measures the Caspian's bed, a kilometre below its surface at -28 m, and the
+     * surface agreement test then threw the whole lake away as an implausible value -- leaving a dry
+     * pit where the largest lake on Earth should be. A bed below the surface by no more than the
+     * deepest lake on Earth is accepted. A DEM above the surface is never a bed, so the Tibetan
+     * failure -- a sea-level surface under a 5 km plateau -- is still refused.
+     */
+    private boolean bathymetricLakeBed(double surfaceMeters, double demMeters) {
+        return elevation.hasBathymetry()
+                && !ElevationProvider.isNoData(surfaceMeters) && !ElevationProvider.isNoData(demMeters)
+                && demMeters < surfaceMeters && surfaceMeters - demMeters <= DEEPEST_LAKE_METERS;
+    }
+
+    /** Lake Baikal, the deepest lake on Earth, with a margin for DEM error. */
+    private static final double DEEPEST_LAKE_METERS = 1700.0;
 
     /**
      * How far a lake's declared surface may sit from the DEM at the same column before the lake is

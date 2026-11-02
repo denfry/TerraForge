@@ -19,13 +19,22 @@ public final class ClimateBiomeMapper implements BiomeMapper {
     private static final double POLAR = 66.5;
     /** Above this elevation a glacier is a peak rather than an ice sheet, in metres. */
     private static final double PEAK_GLACIER = 2000.0;
+    /**
+     * Poleward edge of the lukewarm seas. Between the warm tropical ocean and the temperate one,
+     * vanilla's lukewarm ocean makes the change of water colour a gradient instead of one jump.
+     */
+    private static final double LUKEWARM = 40.0;
+    /** Above this latitude the alpine belt is snowy slopes; below it, a high meadow. */
+    private static final double ALPINE_SNOW = 55.0;
 
     @Override
     public Biome toMinecraft(ClimateBiome climate, double elevation, double latitude) {
         double absLatitude = Math.abs(latitude);
         return switch (climate) {
-            case OCEAN -> absLatitude >= ARCTIC ? Biome.COLD_OCEAN : Biome.OCEAN;
-            case DEEP_OCEAN -> absLatitude >= ARCTIC ? Biome.DEEP_COLD_OCEAN : Biome.DEEP_OCEAN;
+            case OCEAN -> absLatitude >= ARCTIC ? Biome.COLD_OCEAN
+                    : absLatitude < LUKEWARM ? Biome.LUKEWARM_OCEAN : Biome.OCEAN;
+            case DEEP_OCEAN -> absLatitude >= ARCTIC ? Biome.DEEP_COLD_OCEAN
+                    : absLatitude < LUKEWARM ? Biome.DEEP_LUKEWARM_OCEAN : Biome.DEEP_OCEAN;
             case WARM_OCEAN -> Biome.WARM_OCEAN;
             case FROZEN_OCEAN -> Biome.FROZEN_OCEAN;
             case LAKE, RIVER -> absLatitude >= POLAR ? Biome.FROZEN_RIVER : Biome.RIVER;
@@ -36,7 +45,8 @@ public final class ClimateBiomeMapper implements BiomeMapper {
             case SEMI_DESERT -> Biome.BADLANDS;
             case SAVANNA -> Biome.SAVANNA;
             case GRASSLAND -> absLatitude >= POLAR ? Biome.SNOWY_PLAINS : Biome.PLAINS;
-            case SHRUBLAND -> absLatitude < 35.0 ? Biome.SPARSE_JUNGLE : Biome.PLAINS;
+            // Dry scrub -- the Sahel, the outback, the Kalahari -- not a jungle of any kind.
+            case SHRUBLAND -> absLatitude < 35.0 ? Biome.SAVANNA : Biome.PLAINS;
             case TEMPERATE_FOREST -> Biome.FOREST;
             case TEMPERATE_RAINFOREST -> Biome.DARK_FOREST;
             case BOREAL_FOREST -> absLatitude >= ARCTIC ? Biome.SNOWY_TAIGA : Biome.TAIGA;
@@ -46,7 +56,9 @@ public final class ClimateBiomeMapper implements BiomeMapper {
             case MANGROVE -> Biome.MANGROVE_SWAMP;
 
             case TUNDRA -> Biome.SNOWY_PLAINS;
-            case ALPINE -> Biome.SNOWY_SLOPES;
+            // The alpine belt between the treeline and the snow is grass and rock; it is snowy only
+            // where the whole mountain is, far north and south.
+            case ALPINE -> absLatitude >= ALPINE_SNOW ? Biome.SNOWY_SLOPES : Biome.MEADOW;
             // Ice Spikes is deliberately avoided: vanilla decorates it with its own noise-driven
             // "ice_spike" feature, an erratic forest of packed-ice columns that has no relationship
             // to real glacier surfaces and reads as visual noise instead of terrain.

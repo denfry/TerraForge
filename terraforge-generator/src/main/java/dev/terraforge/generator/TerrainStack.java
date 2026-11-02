@@ -86,7 +86,8 @@ public final class TerrainStack {
                 .chunkSampler(builtPipeline -> {
                     var sampler = new CachingChunkSampler(builtPipeline, transformer, cacheManager,
                             config.cache().chunkCacheEntries(), config.terrain().smoothing(),
-                        config.water().shoreBlendBlocks());
+                            config.water().shoreBlendBlocks(), config.terrain().detail(),
+                            verticalScale.minY() + 2, verticalScale.maxY() - 2);
                     samplerHolder.set(sampler);
                     return sampler;
                 })

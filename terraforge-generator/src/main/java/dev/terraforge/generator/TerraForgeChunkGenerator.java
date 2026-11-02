@@ -376,7 +376,7 @@ public final class TerraForgeChunkGenerator extends ChunkGenerator {
         }
         BlockPopulator vegetation = new VegetationPopulator(pipeline,
                 new VegetationPlan(features.vegetationDensity(), features.customTrees(), features.farmland(),
-                        features.farmlandShare()));
+                        features.farmlandShare(), features.vegetationTuning()));
         if (extent == null) {
             return List.of(vegetation);
         }
@@ -437,16 +437,29 @@ public final class TerraForgeChunkGenerator extends ChunkGenerator {
      * @param farmland           till flat cropland into fields ({@code generation.vegetation.farmland})
      * @param underground        ores, stone pockets and cave systems ({@code generation.underground})
      * @param farmlandShare      share of flat cropland tilled ({@code generation.vegetation.farmland-share})
+     * @param vegetationTuning   reeds, dead bushes and plants on sand ({@code generation.vegetation.*})
      */
     public record Features(boolean karstCaves, boolean vanillaCaves, boolean vanillaDecorations,
                            boolean vegetation, double vegetationDensity, boolean customTrees, boolean farmland,
                            dev.terraforge.core.config.TerraForgeConfig.UndergroundSection underground,
-                           double farmlandShare) {
+                           double farmlandShare, VegetationPlan.Tuning vegetationTuning) {
 
         public Features {
             if (underground == null) {
                 underground = dev.terraforge.core.config.TerraForgeConfig.UndergroundSection.off();
             }
+            if (vegetationTuning == null) {
+                vegetationTuning = VegetationPlan.Tuning.CALIBRATED;
+            }
+        }
+
+        /** Calibrated reeds, dead bushes and plants on sand. */
+        public Features(boolean karstCaves, boolean vanillaCaves, boolean vanillaDecorations,
+                        boolean vegetation, double vegetationDensity, boolean customTrees, boolean farmland,
+                        dev.terraforge.core.config.TerraForgeConfig.UndergroundSection underground,
+                        double farmlandShare) {
+            this(karstCaves, vanillaCaves, vanillaDecorations, vegetation, vegetationDensity, customTrees,
+                    farmland, underground, farmlandShare, null);
         }
 
         /** No underground pass: stone all the way down; every flat cropland field tilled. */
@@ -466,7 +479,8 @@ public final class TerraForgeChunkGenerator extends ChunkGenerator {
             return new Features(generation.caves(), generation.vanillaCaves(),
                     generation.vanillaDecorations(), vegetation.enabled(), vegetation.density(),
                     vegetation.customTrees(), vegetation.farmland(), generation.underground(),
-                    vegetation.farmlandShare());
+                    vegetation.farmlandShare(), new VegetationPlan.Tuning(vegetation.reedDensity(),
+                            vegetation.deadBushDensity(), vegetation.plantsOnSand()));
         }
     }
 }

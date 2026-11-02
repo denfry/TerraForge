@@ -73,6 +73,12 @@ terrain:
   # the Alps into walls. 1300 with meters-per-block 15 fits Everest into a 256-block band.
   relief-curve-meters: 0
 
+  # Relief detail on land, 0..3. A column averaged over a kilometre has lost its knolls, spurs and
+  # gullies: hills become even domes and slopes even contour steps. 1.0 adds them back with noise that
+  # follows the local slope -- about a block on a plain, up to seven on a mountain side. 0 keeps the
+  # averaged surface. Changing it in a world that already has chunks leaves a seam at their edge.
+  detail: 1.0
+
 water:
   oceans: true
   lakes: true
@@ -150,6 +156,13 @@ generation:
     # Share of flat cropland that is tilled (0..1); the rest stays meadow. At a kilometre per block
     # real cropland covers whole regions, so tilling all of it makes an endless allotment.
     farmland-share: 0.25
+    # Share of sugar cane kept beside water, 0..1. At a kilometre per block every river bank grows cane
+    # from source to mouth.
+    reed-density: 1.0
+    # Share of dead bushes kept, 0..1.
+    dead-bush-density: 1.0
+    # Grass, dry grass and sugar cane on sand. false leaves dunes and beaches to cacti and dead bushes.
+    plants-on-sand: true
 
   # What lies under the ground, generated with the chunk on the generation threads -- never patched
   # into a live world afterwards. Heights follow this world's sea level and floor, not vanilla's, so
@@ -167,6 +180,8 @@ generation:
     caves: true
     # One cave system starts in one chunk of this many. Vanilla 1.16 is 7; lower means more caves.
     cave-rarity: 7.0
+    # Multiplier on emerald ore alone, on top of ore-multiplier.
+    emerald-multiplier: 1.0
 
 pregeneration:
   # Never permit an unbounded async queue; one chunk is the safe default.

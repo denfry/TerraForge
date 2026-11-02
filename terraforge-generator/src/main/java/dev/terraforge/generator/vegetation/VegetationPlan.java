@@ -39,6 +39,9 @@ public final class VegetationPlan {
     private static final long FIELD_SALT = 0x4649454CL;
     private static final long CORAL_SALT = 0x434F5241L;
     private static final long KELP_SALT = 0x4B454C50L;
+    private static final long DEAD_BUSH_SALT = 0x44425553L;
+    private static final long WOODLAND_SALT = 0x574F4F44L;
+    private static final long KELP_GAP_SALT = 0x4B474150L;
 
     /** Edge of one crop field, in blocks: one crop, one orientation, one ripeness per field. */
     static final int FIELD_SIZE = 16;
@@ -49,6 +52,30 @@ public final class VegetationPlan {
     private final boolean customTrees;
     private final boolean farmland;
     private final double farmlandShare;
+    private final Tuning tuning;
+
+    /**
+     * What a server tunes beyond density: how much sugar cane lines the water, how many dead bushes
+     * stay, and whether sand grows anything but cacti and dead bushes.
+     *
+     * @param reedDensity     share of sugar cane kept, {@code 0..1}
+     * @param deadBushDensity share of dead bushes kept, {@code 0..1}
+     * @param plantsOnSand    grass, dry grass and sugar cane on sand
+     */
+    public record Tuning(double reedDensity, double deadBushDensity, boolean plantsOnSand) {
+
+        /** Everything as calibrated. */
+        public static final Tuning CALIBRATED = new Tuning(1.0, 1.0, true);
+
+        public Tuning {
+            if (!(reedDensity >= 0.0 && reedDensity <= 1.0)) {
+                throw new IllegalArgumentException("reed density must be between 0 and 1: " + reedDensity);
+            }
+            if (!(deadBushDensity >= 0.0 && deadBushDensity <= 1.0)) {
+                throw new IllegalArgumentException("dead bush density must be between 0 and 1: " + deadBushDensity);
+            }
+        }
+    }
 
     /** Picks which fields are tilled; independent of {@link #FIELD_SALT} so crops do not bias it. */
     private static final long TILLED_SALT = 0x54494C4CL;
@@ -65,6 +92,12 @@ public final class VegetationPlan {
      * @param farmlandShare share of cropland fields that are tilled, {@code 0..1}; the rest grow as meadow
      */
     public VegetationPlan(double density, boolean customTrees, boolean farmland, double farmlandShare) {
+        this(density, customTrees, farmland, farmlandShare, Tuning.CALIBRATED);
+    }
+
+    /** As {@link #VegetationPlan(double, boolean, boolean, double)}, with reeds, dead bushes and sand tuned. */
+    public VegetationPlan(double density, boolean customTrees, boolean farmland, double farmlandShare,
+                          Tuning tuning) {
         if (!(density >= 0.0) || !Double.isFinite(density)) {
             throw new IllegalArgumentException("vegetation density must not be negative: " + density);
         }
@@ -75,6 +108,7 @@ public final class VegetationPlan {
         this.customTrees = customTrees;
         this.farmland = farmland;
         this.farmlandShare = farmlandShare;
+        this.tuning = tuning == null ? Tuning.CALIBRATED : tuning;
     }
 
     /** Calibrated density, every feature on. */
@@ -183,12 +217,12 @@ public final class VegetationPlan {
         }
 
         // Reeds first: they need water beside them, and that is rarer than any other condition.
-        if (column.freshWaterAtLevel() && growsReeds(biome, ground)
-                && random.nextDouble() < reedChance(biome) * density) {
+        if (column.freshWaterAtLevel() && growsReeds(biome, ground, tuning.plantsOnSand())
+                && random.nextDouble() < reedChance(biome) * density * tuning.reedDensity()) {
             return new Placement.SugarCane(2 + random.nextInt(3));
         }
 
-        double treeChance = treeChance(biome, cover) * density;
+        double treeChance = treeChance(biome, cover) * density * woodland(column.x(), column.z());
         if (column.riparian()) {
             treeChance += riparianTreeBonus(biome) * density;
         }
@@ -209,8 +243,45 @@ public final class VegetationPlan {
         if (random.nextDouble() >= plantChance) {
             return Placement.None.INSTANCE;
         }
-        return plant(column, random);
+        return tuned(column, plant(column, random));
     }
+
+    /**
+     * Trees grow in woods and copses with open ground between them, not one every so many metres. A
+     * per-column chance alone scatters them evenly -- from above a forest looks like a dotted grid --
+     * so the chance is scaled by low-frequency noise: up to about twice as dense in the thick of a
+     * wood, a tenth in a clearing, about the same on average.
+     */
+    static double woodland(int x, int z) {
+        double broad = CellNoise.smooth(x, z, 96, WOODLAND_SALT);
+        double fine = CellNoise.smooth(x, z, 28, WOODLAND_SALT + 1);
+        double shape = 0.65 * broad + 0.35 * fine;
+        double t = Math.max(0.0, Math.min(1.0, (shape - 0.3) / 0.4));
+        return 0.1 + 1.8 * t * t * (3.0 - 2.0 * t);
+    }
+
+    /**
+     * Applies {@link Tuning} to a ground plant: thins dead bushes by a positional hash -- not a draw
+     * from {@code random}, so every other column keeps its plant -- and keeps grass off sand.
+     */
+    private Placement tuned(Column column, Placement placement) {
+        if (!(placement instanceof Placement.Plant plant)) {
+            return placement;
+        }
+        Material material = plant.material();
+        if (material == Material.DEAD_BUSH && tuning.deadBushDensity() < 1.0
+                && CellNoise.at(column.x(), column.z(), DEAD_BUSH_SALT) >= tuning.deadBushDensity()) {
+            return Placement.None.INSTANCE;
+        }
+        if (!tuning.plantsOnSand() && column.ground() == Material.SAND && SAND_GRASSES.contains(material)) {
+            return Placement.None.INSTANCE;
+        }
+        return placement;
+    }
+
+    private static final java.util.Set<Material> SAND_GRASSES = java.util.EnumSet.of(
+            Material.SHORT_GRASS, Material.TALL_GRASS, Material.SHORT_DRY_GRASS, Material.TALL_DRY_GRASS,
+            Material.FERN, Material.LARGE_FERN, Material.BUSH);
 
     // ---------------------------------------------------------------------------------------------
     // How much
@@ -262,6 +333,7 @@ public final class VegetationPlan {
             case DESERT -> 0.03;
             case MANGROVE -> 0.12;
             case TUNDRA -> 0.04;
+            case ALPINE -> 0.12;
             case BEACH -> 0.02;
             default -> 0.0;
         };
@@ -338,8 +410,9 @@ public final class VegetationPlan {
                 if (customTrees && pick < 0.04) {
                     yield custom(Shape.FALLEN_LOG, Wood.OAK, random);
                 }
-                yield pick < 0.55 ? vanilla(TreeType.TREE) : pick < 0.8 ? vanilla(TreeType.BIRCH)
-                        : vanilla(TreeType.BIG_TREE);
+                // Dark oak stands in the broadleaf forest too, not only in the dark forest of the rainforest.
+                yield pick < 0.5 ? vanilla(TreeType.TREE) : pick < 0.72 ? vanilla(TreeType.BIRCH)
+                        : pick < 0.88 ? vanilla(TreeType.BIG_TREE) : vanilla(TreeType.DARK_OAK);
             }
             case TEMPERATE_RAINFOREST -> {
                 if (customTrees && pick < 0.05) {
@@ -352,10 +425,12 @@ public final class VegetationPlan {
                 if (customTrees && pick < 0.03) {
                     yield custom(Shape.FALLEN_LOG, Wood.JUNGLE, random);
                 }
-                yield pick < 0.45 ? vanilla(TreeType.JUNGLE) : pick < 0.8 ? vanilla(TreeType.SMALL_JUNGLE)
-                        : pick < 0.9 ? vanilla(TreeType.COCOA_TREE) : vanilla(TreeType.JUNGLE_BUSH);
+                // Cocoa on a good share of the jungle: one tree in ten left most of it without any.
+                yield pick < 0.4 ? vanilla(TreeType.JUNGLE) : pick < 0.6 ? vanilla(TreeType.SMALL_JUNGLE)
+                        : pick < 0.88 ? vanilla(TreeType.COCOA_TREE) : vanilla(TreeType.JUNGLE_BUSH);
             }
-            case TROPICAL_SEASONAL_FOREST -> pick < 0.55 ? vanilla(TreeType.SMALL_JUNGLE)
+            case TROPICAL_SEASONAL_FOREST -> pick < 0.4 ? vanilla(TreeType.SMALL_JUNGLE)
+                    : pick < 0.55 ? vanilla(TreeType.COCOA_TREE)
                     : pick < 0.8 ? vanilla(TreeType.TREE) : vanilla(TreeType.JUNGLE_BUSH);
             case SAVANNA -> {
                 if (customTrees && pick < 0.06) {
@@ -436,7 +511,15 @@ public final class VegetationPlan {
                 return pick < 0.7 ? new Placement.Plant(Material.SHORT_DRY_GRASS)
                         : new Placement.Plant(Material.DEAD_BUSH);
             }
-            case TUNDRA, ALPINE, GLACIER, BARE_ROCK, STONY_SHORE -> {
+            case ALPINE -> {
+                // Short alpine turf on the grass patches of the belt; scree and rock stay bare.
+                if (ground != Material.GRASS_BLOCK) {
+                    return Placement.None.INSTANCE;
+                }
+                return pick < 0.75 ? new Placement.Plant(Material.SHORT_GRASS)
+                        : new Placement.Plant(flower(column, ClimateBiome.MOUNTAIN_MEADOW, random));
+            }
+            case TUNDRA, GLACIER, BARE_ROCK, STONY_SHORE -> {
                 return Placement.None.INSTANCE; // snow, ice and rock: nothing takes root
             }
             default -> { }
@@ -701,8 +784,13 @@ public final class VegetationPlan {
                 return switch (biome) {
                     case WARM_OCEAN -> warmSeabed(column, depth, roll, random);
                     case OCEAN -> temperateSeabed(column, depth, roll, random);
-                    case DEEP_OCEAN -> depth >= 2 && roll < 0.04 * density
-                            ? new Placement.Seagrass(false) : Placement.None.INSTANCE;
+                    // Kelp on the deep sea floor too: at a kilometre per block most of the sea is deep.
+                    case DEEP_OCEAN -> {
+                        Placement kelp = kelpForest(column, depth, roll, density * 0.6);
+                        yield kelp != null ? kelp
+                                : depth >= 2 && roll < 0.04 * density ? new Placement.Seagrass(false)
+                                : Placement.None.INSTANCE;
+                    }
                     default -> Placement.None.INSTANCE; // the frozen ocean floor is bare
                 };
             }
@@ -738,14 +826,33 @@ public final class VegetationPlan {
     }
 
     private Placement temperateSeabed(Column column, int depth, double roll, Random random) {
-        double forest = CellNoise.smooth(column.x(), column.z(), 40, KELP_SALT);
-        if (depth >= 5 && forest > 0.55 && roll < 0.30 * density) {
-            return new Placement.Kelp(Math.min(depth - 1, 4 + random.nextInt(Math.max(1, depth - 4))));
+        Placement kelp = kelpForest(column, depth, roll, density);
+        if (kelp != null) {
+            return kelp;
         }
         if (depth >= 2 && roll < 0.14 * density) {
             return new Placement.Seagrass(depth >= 3 && random.nextDouble() < 0.4);
         }
         return Placement.None.INSTANCE;
+    }
+
+    /** Longest kelp stalk, in blocks: taller ones read as walls of green on a scaled sea floor. */
+    static final int MAX_KELP = 25;
+
+    /**
+     * A kelp stalk inside a kelp forest, or {@code null}. A stalk reaches between one and eight blocks
+     * short of the surface, then half that, at most {@link #MAX_KELP}: full-height stalks made the
+     * shelf a solid wall of kelp. The gap is a positional hash, not a draw from the column's random,
+     * so the column's other choices do not shift.
+     */
+    static Placement kelpForest(Column column, int depth, double roll, double chance) {
+        double forest = CellNoise.smooth(column.x(), column.z(), 40, KELP_SALT);
+        if (depth < 5 || forest <= 0.55 || roll >= 0.30 * chance) {
+            return null;
+        }
+        int gap = 1 + (int) (CellNoise.at(column.x(), column.z(), KELP_GAP_SALT) * 8.0);
+        int reach = Math.max(1, depth - gap);
+        return new Placement.Kelp(Math.max(1, Math.min(MAX_KELP, (reach + 1) / 2)));
     }
 
     private static final Material[] CORAL_BLOCKS = {
@@ -784,6 +891,10 @@ public final class VegetationPlan {
 
     /** Ground sugar cane accepts, in a biome warm enough for it. */
     static boolean growsReeds(ClimateBiome biome, Material ground) {
-        return reedChance(biome) > 0.0 && (ground == Material.SAND || growsPlants(ground));
+        return growsReeds(biome, ground, true);
+    }
+
+    static boolean growsReeds(ClimateBiome biome, Material ground, boolean onSand) {
+        return reedChance(biome) > 0.0 && ((onSand && ground == Material.SAND) || growsPlants(ground));
     }
 }

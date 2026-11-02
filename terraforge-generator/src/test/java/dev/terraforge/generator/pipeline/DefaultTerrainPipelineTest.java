@@ -229,6 +229,28 @@ class DefaultTerrainPipelineTest {
     }
 
     @Test
+    void aLakeOverItsOwnBathymetryIsWaterWithTheMeasuredBed() {
+        // The Caspian: surface at -28 m, GEBCO's bed 950 m below it. The surface agreement test alone
+        // rejected the lake and left a dry pit.
+        DefaultTerrainPipeline pipeline = withWater(bathymetry(-980.0), water(WaterType.LAKE, -28.0, 200.0));
+
+        TerrainSample sample = pipeline.sampleColumn(42.0, 50.5);
+
+        assertThat(sample.waterType()).isEqualTo(WaterType.LAKE);
+        assertThat(sample.waterSurfaceY()).isEqualTo(SCALE.toBlockY(-28.0));
+        assertThat(sample.elevationMeters()).isEqualTo(-980.0);
+        assertThat(sample.isUnderwater()).isTrue();
+    }
+
+    @Test
+    void aBathymetricDemNeverTurnsAPlateauIntoALake() {
+        // Bathymetry only vouches for a bed below the surface; a DEM above it is still a contradiction.
+        DefaultTerrainPipeline pipeline = withWater(bathymetry(5440.0), water(WaterType.LAKE, 0.0, 0.0));
+
+        assertThat(pipeline.sampleColumn(30.49, 84.07).waterType()).isEqualTo(WaterType.NONE);
+    }
+
+    @Test
     void aBlocksElevationIsTheMeanOverItsFootprintNotItsCentre() {
         // A one-block-per-km world: the centre sample is a spike, the footprint is not. Sampling the
         // centre would report 1000 m of relief that the ground does not have.

@@ -39,17 +39,58 @@ public final class ClimateBiomeResolver {
      */
     private static final double MIN_SNOWLINE = 300.0;
 
+    /** Latitudes of the treeline and snowline tables below, in degrees from the equator. */
+    private static final double[] LINE_LATITUDES = {0, 15, 25, 30, 35, 40, 46, 50, 55, 60, 65, 70, 75, 80, 90};
     /**
-     * Elevation above which trees stop, in metres: about 4000 m at the equator, 2000 m in the Alps,
-     * sea level near the poles. A linear fit is enough at the resolution TerraForge generates at.
+     * Treeline in metres at {@link #LINE_LATITUDES}: about 3900 m in the tropics, highest in the
+     * subtropical highlands, 2100 m in the Alps, 800 m in Norway, nothing past 70 degrees.
      */
+    private static final double[] TREELINE = {3900, 4100, 4000, 3600, 3100, 2700, 2100, 1700, 1100, 800, 400, 0, 0, 0, 0};
+    /**
+     * Permanent snow in metres at {@link #LINE_LATITUDES}: lower on the wet equator than in the dry
+     * subtropics, where the Andes and the Himalaya keep it above 5000 m; about 3000 m in the Alps,
+     * 1500 m in Scandinavia. A straight line through the poles and the equator put glaciers on the
+     * Drakensberg and the Alps a kilometre too low.
+     */
+    private static final double[] SNOWLINE = {4800, 5000, 5500, 5300, 4600, 3900, 3000, 2600, 2000, 1500, 1100, 700, 400, MIN_SNOWLINE, MIN_SNOWLINE};
+
+    /** How far the snowline wanders around its table value with aspect and shelter, in metres. */
+    private static final double SNOWLINE_WANDER = 350.0;
+    /** How far the treeline wanders, in metres. */
+    private static final double TREELINE_WANDER = 250.0;
+    /** How far the shelf break wanders around {@link #DEEP_OCEAN_DEPTH}, in metres. */
+    private static final double SHELF_WANDER = 400.0;
+    /** How far the edge of the warm ocean wanders around the tropics, in degrees. */
+    private static final double TROPICS_WANDER = 3.0;
+    /** Coarse cell of the wandering, in degrees: about 30 km. */
+    private static final double WANDER_CELL = 0.3;
+
+    /** Elevation above which trees stop, in metres. */
     public static double treelineMeters(double latitude) {
-        return Math.max(0.0, 4000.0 - 55.0 * Math.abs(latitude));
+        return lookup(TREELINE, Math.abs(latitude));
     }
 
-    /** Elevation above which snow is permanent, in metres. Runs roughly 900 m above the treeline. */
+    /** Elevation above which snow is permanent, in metres. */
     public static double snowlineMeters(double latitude) {
-        return Math.max(MIN_SNOWLINE, 4900.0 - 62.0 * Math.abs(latitude));
+        return Math.max(MIN_SNOWLINE, lookup(SNOWLINE, Math.abs(latitude)));
+    }
+
+    private static double lookup(double[] values, double absLatitude) {
+        for (int i = 1; i < LINE_LATITUDES.length; i++) {
+            if (absLatitude <= LINE_LATITUDES[i]) {
+                double t = (absLatitude - LINE_LATITUDES[i - 1]) / (LINE_LATITUDES[i] - LINE_LATITUDES[i - 1]);
+                return values[i - 1] + (values[i] - values[i - 1]) * t;
+            }
+        }
+        return values[values.length - 1];
+    }
+
+    /** A threshold's wander at this place, {@code 0} when the longitude is unknown. */
+    private static double wander(double latitude, double longitude, double amount, long salt) {
+        if (Double.isNaN(longitude)) {
+            return 0.0;
+        }
+        return GeoNoise.at(latitude, longitude, WANDER_CELL, salt) * amount;
     }
 
     /**
@@ -60,8 +101,20 @@ public final class ClimateBiomeResolver {
      */
     public ClimateBiome resolve(double latitude, double elevationMeters,
                                 WaterType water, LandcoverClass landcover) {
+        return resolve(latitude, Double.NaN, elevationMeters, water, landcover);
+    }
+
+    /**
+     * As {@link #resolve(double, double, WaterType, LandcoverClass)}, with the snowline, treeline,
+     * shelf break and edge of the tropics wandering around their table values by place, so the
+     * boundaries between biomes are ragged rather than a contour line or a parallel.
+     *
+     * @param longitude degrees; {@link Double#NaN} for the exact table values
+     */
+    public ClimateBiome resolve(double latitude, double longitude, double elevationMeters,
+                                WaterType water, LandcoverClass landcover) {
         if (water.isWater()) {
-            return resolveWater(latitude, elevationMeters, water);
+            return resolveWater(latitude, longitude, elevationMeters, water);
         }
         double absLatitude = Math.abs(latitude);
 
@@ -77,7 +130,7 @@ public final class ClimateBiomeResolver {
         if (elevationMeters <= SHORE_ELEVATION) {
             return absLatitude >= POLAR ? ClimateBiome.STONY_SHORE : ClimateBiome.BEACH;
         }
-        if (elevationMeters > snowlineMeters(latitude)) {
+        if (elevationMeters > snowlineMeters(latitude) + wander(latitude, longitude, SNOWLINE_WANDER, 0x534E4F57L)) {
             return ClimateBiome.GLACIER;
         }
         // Beyond the polar circles there are no trees at any elevation, so the treeline says
@@ -85,14 +138,15 @@ public final class ClimateBiomeResolver {
         if (absLatitude >= POLAR) {
             return landcover == LandcoverClass.BARE_SPARSE ? ClimateBiome.BARE_ROCK : ClimateBiome.TUNDRA;
         }
-        double treeline = treelineMeters(latitude);
+        double treeline = treelineMeters(latitude) + wander(latitude, longitude, TREELINE_WANDER, 0x54524545L);
         if (elevationMeters > treeline) {
             // Above the treeline the surface is alpine mat, then bare rock further up.
             return elevationMeters > treeline + ALPINE_BAND ? ClimateBiome.BARE_ROCK : ClimateBiome.ALPINE;
         }
         // Mountain varieties need both a real altitude and proximity to the treeline, so a plain at
         // 60 degrees north does not become a mountain just because its treeline is low.
-        boolean mountainous = elevationMeters > MOUNTAIN_ELEVATION && elevationMeters > treeline - 700.0;
+        // The montane belt is about a kilometre deep: 1100..2100 m in the Alps.
+        boolean mountainous = elevationMeters > MOUNTAIN_ELEVATION && elevationMeters > treeline - 1000.0;
 
         return switch (landcover) {
             case TREE_COVER -> mountainous ? ClimateBiome.MOUNTAIN_FOREST : forestFor(absLatitude);
@@ -117,7 +171,7 @@ public final class ClimateBiomeResolver {
         };
     }
 
-    private ClimateBiome resolveWater(double latitude, double elevationMeters, WaterType water) {
+    private ClimateBiome resolveWater(double latitude, double longitude, double elevationMeters, WaterType water) {
         return switch (water) {
             case LAKE -> Math.abs(latitude) >= POLAR ? ClimateBiome.FROZEN_OCEAN : ClimateBiome.LAKE;
             case RIVER -> ClimateBiome.RIVER;
@@ -125,10 +179,11 @@ public final class ClimateBiomeResolver {
                 if (Math.abs(latitude) >= POLAR) {
                     yield ClimateBiome.FROZEN_OCEAN;
                 }
-                if (elevationMeters < -DEEP_OCEAN_DEPTH) {
+                if (elevationMeters < -DEEP_OCEAN_DEPTH + wander(latitude, longitude, SHELF_WANDER, 0x53484C46L)) {
                     yield ClimateBiome.DEEP_OCEAN;
                 }
-                yield Math.abs(latitude) < TROPICS ? ClimateBiome.WARM_OCEAN : ClimateBiome.OCEAN;
+                yield Math.abs(latitude) < TROPICS + wander(latitude, longitude, TROPICS_WANDER, 0x54524F50L)
+                        ? ClimateBiome.WARM_OCEAN : ClimateBiome.OCEAN;
             }
             case NONE -> throw new IllegalArgumentException("not water");
         };

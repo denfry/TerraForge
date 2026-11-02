@@ -15,7 +15,7 @@ class SurfacePaletteTest {
     private static final int SIDE = 400;
 
     @Test
-    void theSeaBedIsGravelSandClayBoneAndObsidianInTheStatedShares() {
+    void theSeaBedIsSandGravelClayAndMudInTheStatedShares() {
         Map<Material, Integer> counts = new EnumMap<>(Material.class);
         for (int x = 0; x < SIDE; x++) {
             for (int z = 0; z < SIDE; z++) {
@@ -26,12 +26,25 @@ class SurfacePaletteTest {
         }
         double total = SIDE * SIDE;
         assertThat(counts.keySet()).containsExactlyInAnyOrder(Material.GRAVEL, Material.SAND, Material.CLAY,
-                Material.BONE_BLOCK, Material.OBSIDIAN);
-        assertThat(counts.get(Material.GRAVEL) / total).isCloseTo(0.25, within(0.03));
-        assertThat(counts.get(Material.SAND) / total).isCloseTo(0.35, within(0.03));
+                Material.MUD);
+        assertThat(counts.get(Material.SAND) / total).isCloseTo(0.45, within(0.03));
+        assertThat(counts.get(Material.GRAVEL) / total).isCloseTo(0.30, within(0.03));
         assertThat(counts.get(Material.CLAY) / total).isCloseTo(0.15, within(0.03));
-        assertThat(counts.get(Material.BONE_BLOCK) / total).isCloseTo(0.20, within(0.03));
-        assertThat(counts.get(Material.OBSIDIAN) / total).isCloseTo(0.05, within(0.02));
+        assertThat(counts.get(Material.MUD) / total).isCloseTo(0.10, within(0.02));
+    }
+
+    @Test
+    void theAlpineBeltIsMostlyGrassAndRockWithOnlyPatchesOfSnow() {
+        Map<Material, Integer> counts = new EnumMap<>(Material.class);
+        for (int x = 0; x < SIDE; x++) {
+            for (int z = 0; z < SIDE; z++) {
+                counts.merge(SurfacePalette.forColumn(ClimateBiome.ALPINE, x, z).top(), 1, Integer::sum);
+            }
+        }
+        double total = SIDE * SIDE;
+        assertThat(counts.get(Material.GRASS_BLOCK) / total).isCloseTo(0.50, within(0.04));
+        assertThat(counts.get(Material.SNOW_BLOCK) / total).isLessThan(0.12);
+        assertThat(counts).containsKeys(Material.COARSE_DIRT, Material.STONE, Material.GRAVEL);
     }
 
     @Test

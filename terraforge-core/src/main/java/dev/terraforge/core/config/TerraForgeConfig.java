@@ -42,7 +42,8 @@ public record TerraForgeConfig(
                 WorldSection.named("earth"),
                 new ScaleSection(1.0),
                 new EarthSection(new OriginSection(51.0, 10.0), "equirectangular"),
-                new TerrainSection(63, -64, 320, 1.0, 1.0, 0.0, 8, TerrainSection.DEFAULT_SMOOTHING),
+                new TerrainSection(63, -64, 320, 1.0, 1.0, 0.0, 8, TerrainSection.DEFAULT_SMOOTHING, 0.0,
+                        null, null, 1.0),
                 new WaterSection(true, true, true, 30.0, 1.0),
                 new BiomesSection(true, 0.35),
                 new GenerationSection(true, false, false, false, false, 4, VegetationSection.defaults()),
@@ -127,6 +128,11 @@ public record TerraForgeConfig(
      *                             band -- 0..256 is what a 1.16 client can see -- while the world keeps
      *                             vanilla's height, so no datapack has to change the overworld's height
      *                             for every other world on the server.
+     * @param detail               strength of the relief detail added on land, where a kilometre-wide
+     *                             column has lost its knolls, spurs and gullies: {@code 1.0} is
+     *                             calibrated, {@code 0} keeps the averaged DEM surface. Absent means
+     *                             {@code 0}, so a world started before it existed keeps generating the
+     *                             same terrain.
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record TerrainSection(
@@ -140,7 +146,8 @@ public record TerraForgeConfig(
             double smoothing,
             double reliefCurveMeters,
             Integer generatedMinY,
-            Integer generatedMaxY) {
+            Integer generatedMaxY,
+            Double detail) {
 
         public static final double DEFAULT_SMOOTHING = 3.0;
 
@@ -155,6 +162,18 @@ public record TerraForgeConfig(
             if (generatedMaxY == null) {
                 generatedMaxY = maxY;
             }
+            if (detail == null || Double.isNaN(detail)) {
+                detail = 0.0;
+            }
+        }
+
+        /** Without relief detail. */
+        public TerrainSection(int seaLevel, int minY, int maxY, double verticalExaggeration,
+                              double metersPerBlock, double fallbackElevation, int bedrockThickness,
+                              double smoothing, double reliefCurveMeters, Integer generatedMinY,
+                              Integer generatedMaxY) {
+            this(seaLevel, minY, maxY, verticalExaggeration, metersPerBlock, fallbackElevation,
+                    bedrockThickness, smoothing, reliefCurveMeters, generatedMinY, generatedMaxY, null);
         }
 
         /** Terrain over the whole world height. */
@@ -305,10 +324,13 @@ public record TerraForgeConfig(
      *                      {@code generation.caves}, which is the karst carver.
      * @param caveRarity    one cave system starts in one chunk of this many; vanilla 1.16 is 7, lower
      *                      means more caves
+     * @param emeraldMultiplier multiplier on emerald ore alone, on top of {@code oreMultiplier}; emerald
+     *                      is the only ore vanilla limits to mountains, so a server that trades in it
+     *                      tunes it separately. Absent means {@code 1.0}.
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record UndergroundSection(Boolean ores, Double oreMultiplier, Boolean stoneVariety,
-                                     Boolean caves, Double caveRarity) {
+                                     Boolean caves, Double caveRarity, Double emeraldMultiplier) {
 
         public UndergroundSection {
             if (ores == null) {
@@ -326,15 +348,24 @@ public record TerraForgeConfig(
             if (caveRarity == null) {
                 caveRarity = 7.0;
             }
+            if (emeraldMultiplier == null || Double.isNaN(emeraldMultiplier)) {
+                emeraldMultiplier = 1.0;
+            }
+        }
+
+        /** Without an emerald multiplier: vanilla's emerald count. */
+        public UndergroundSection(Boolean ores, Double oreMultiplier, Boolean stoneVariety,
+                                  Boolean caves, Double caveRarity) {
+            this(ores, oreMultiplier, stoneVariety, caves, caveRarity, null);
         }
 
         public static UndergroundSection defaults() {
-            return new UndergroundSection(true, 1.0, true, true, 7.0);
+            return new UndergroundSection(true, 1.0, true, true, 7.0, 1.0);
         }
 
         /** Nothing under the ground but stone: the behaviour before the underground pass existed. */
         public static UndergroundSection off() {
-            return new UndergroundSection(false, 1.0, false, false, 7.0);
+            return new UndergroundSection(false, 1.0, false, false, 7.0, 1.0);
         }
     }
 
@@ -350,10 +381,18 @@ public record TerraForgeConfig(
      * @param farmlandShare share of flat cropland that is tilled, {@code 0..1}; the rest stays meadow.
      *                    At a kilometre per block WorldCover's cropland covers whole regions, and
      *                    tilling all of it turned Europe into one allotment. Absent means 0.25.
+     * @param reedDensity multiplier on sugar cane beside water, {@code 0..1}. At a kilometre per block
+     *                    every river bank is cane from source to mouth; {@code 0.2} keeps a fifth.
+     *                    Absent means {@code 1.0}.
+     * @param deadBushDensity share of dead bushes kept, {@code 0..1}; deserts and steppes otherwise read
+     *                    as a carpet of them. Absent means {@code 1.0}.
+     * @param plantsOnSand grass, dry grass and sugar cane on sand. Off leaves sand to cacti and dead
+     *                    bushes, as on a real dune or beach. Absent means on.
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record VegetationSection(boolean enabled, double density, Boolean customTrees, Boolean farmland,
-                                    Double farmlandShare) {
+                                    Double farmlandShare, Double reedDensity, Double deadBushDensity,
+                                    Boolean plantsOnSand) {
 
         public static final double DEFAULT_FARMLAND_SHARE = 0.25;
 
@@ -370,6 +409,21 @@ public record TerraForgeConfig(
             if (farmlandShare == null || Double.isNaN(farmlandShare)) {
                 farmlandShare = DEFAULT_FARMLAND_SHARE;
             }
+            if (reedDensity == null || Double.isNaN(reedDensity)) {
+                reedDensity = 1.0;
+            }
+            if (deadBushDensity == null || Double.isNaN(deadBushDensity)) {
+                deadBushDensity = 1.0;
+            }
+            if (plantsOnSand == null) {
+                plantsOnSand = Boolean.TRUE;
+            }
+        }
+
+        /** Without the sand and reed settings: everything as calibrated. */
+        public VegetationSection(boolean enabled, double density, Boolean customTrees, Boolean farmland,
+                                 Double farmlandShare) {
+            this(enabled, density, customTrees, farmland, farmlandShare, null, null, null);
         }
 
         /** Without a farmland share: the default share. */
@@ -378,7 +432,7 @@ public record TerraForgeConfig(
         }
 
         public static VegetationSection defaults() {
-            return new VegetationSection(true, 1.0, true, true, DEFAULT_FARMLAND_SHARE);
+            return new VegetationSection(true, 1.0, true, true, DEFAULT_FARMLAND_SHARE, 1.0, 1.0, true);
         }
     }
 

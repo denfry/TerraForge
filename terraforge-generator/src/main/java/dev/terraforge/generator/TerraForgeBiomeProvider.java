@@ -27,6 +27,12 @@ public final class TerraForgeBiomeProvider extends BiomeProvider {
      */
     private final List<Biome> supported;
 
+    private static final List<Double> PROBE_LATITUDES = List.of(0.0, 30.0, 45.0, 58.0, 63.0, 70.0, 80.0);
+    /** How far a column's latitude wanders before it picks a frozen, cold or warm variant, in degrees. */
+    private static final double LATITUDE_WANDER = 2.0;
+    private static final int LATITUDE_WANDER_CELL = 48;
+    private static final long LATITUDE_WANDER_SALT = 0x4C415457L;
+
     private final TerrainPipeline pipeline;
     private final BiomeMapper mapper;
 
@@ -34,12 +40,10 @@ public final class TerraForgeBiomeProvider extends BiomeProvider {
         this.pipeline = pipeline;
         this.mapper = mapper;
         this.supported = Arrays.stream(ClimateBiome.values())
-                .flatMap(climate -> java.util.stream.Stream.of(
-                        // Both variant-selecting inputs matter, so probe the corners of their range.
-                        mapper.toMinecraft(climate, 0.0, 0.0),
-                        mapper.toMinecraft(climate, 0.0, 75.0),
-                        mapper.toMinecraft(climate, 5000.0, 0.0),
-                        mapper.toMinecraft(climate, 5000.0, 75.0)))
+                // Both variant-selecting inputs matter, so probe across their range.
+                .flatMap(climate -> PROBE_LATITUDES.stream().flatMap(latitude -> java.util.stream.Stream.of(
+                        mapper.toMinecraft(climate, 0.0, latitude),
+                        mapper.toMinecraft(climate, 5000.0, latitude))))
                 .distinct()
                 .toList();
     }
@@ -48,7 +52,11 @@ public final class TerraForgeBiomeProvider extends BiomeProvider {
     public Biome getBiome(WorldInfo worldInfo, int x, int y, int z) {
         var samples = pipeline.sampleChunk(x >> 4, z >> 4);
         TerrainSample sample = samples.at(x & 15, z & 15);
-        return mapper.toMinecraft(sample.biome(), sample.elevationMeters(), latitudeOf(samples, z & 15));
+        // Variants switch at fixed parallels (snowy taiga at 60 degrees, cold ocean, lukewarm seas);
+        // without wander each switch is a straight line across a continent.
+        double wander = (dev.terraforge.generator.noise.CellNoise.smooth(x, z, LATITUDE_WANDER_CELL,
+                LATITUDE_WANDER_SALT) * 2.0 - 1.0) * LATITUDE_WANDER;
+        return mapper.toMinecraft(sample.biome(), sample.elevationMeters(), latitudeOf(samples, z & 15) + wander);
     }
 
     @Override
