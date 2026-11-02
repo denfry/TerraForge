@@ -31,6 +31,16 @@ public final class FileDemReader implements DemReader {
     private final boolean bathymetry;
     private final long typicalTileBytes;
     private volatile boolean closed;
+    /**
+     * One mapping per tile file for the life of the reader. The provider's tile cache is bounded, and
+     * every miss used to map the file again while the evicted mapping stayed until a GC happened to
+     * free it: on a planet-wide pregeneration that piled up 63,000 mappings of 15,000 files and the
+     * JVM died at the kernel's {@code vm.max_map_count} (65,530 by default). Keeping each file mapped
+     * once bounds the count by the catalogue size; the mapped bytes are page cache, which the kernel
+     * reclaims under pressure, not heap.
+     */
+    private final java.util.concurrent.ConcurrentHashMap<DemTileKey, MappedDemTile> mapped =
+            new java.util.concurrent.ConcurrentHashMap<>();
 
     private FileDemReader(Path directory, Map<DemTileKey, Path> catalogue,
                           boolean bathymetry, long typicalTileBytes) {
@@ -116,7 +126,21 @@ public final class FileDemReader implements DemReader {
         if (file == null) {
             return Optional.empty();
         }
-        return Optional.of(MappedDemTile.open(file));
+        MappedDemTile tile = mapped.get(key);
+        if (tile != null) {
+            return Optional.of(tile);
+        }
+        try {
+            return Optional.of(mapped.computeIfAbsent(key, ignored -> {
+                try {
+                    return MappedDemTile.open(file);
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
+            }));
+        } catch (UncheckedIOException e) {
+            throw e.getCause();
+        }
     }
 
     @Override
@@ -152,6 +176,7 @@ public final class FileDemReader implements DemReader {
     @Override
     public void close() {
         closed = true;
+        mapped.clear();
     }
 
     /** Convenience for callers that cannot handle a checked exception on a hot path. */

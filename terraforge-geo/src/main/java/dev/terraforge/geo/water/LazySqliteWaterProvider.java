@@ -43,6 +43,13 @@ final class LazySqliteWaterProvider implements WaterProvider, AutoCloseable {
     private final Object connectionLock = new Object();
     private final STRtree index;
     private final ManagedCache<Long, Optional<PreparedGeometry>> geometries;
+    /**
+     * Whether the database holds any sea polygon. The default sources are lakes and rivers only; a
+     * database built from them says nothing about the sea, so below sea level outside every feature
+     * is ocean, as without a database. With sea polygons the database alone decides, and a polder
+     * below sea level stays dry.
+     */
+    private final boolean hasOcean;
 
     LazySqliteWaterProvider(Connection connection, PreparedStatement geometryById, List<CatalogEntry> entries,
                              ManagedCache<Long, Optional<PreparedGeometry>> geometries) {
@@ -54,6 +61,7 @@ final class LazySqliteWaterProvider implements WaterProvider, AutoCloseable {
             index.insert(entry.envelope(), entry);
         }
         index.build();
+        this.hasOcean = entries.stream().anyMatch(entry -> entry.type() == WaterType.OCEAN);
     }
 
     @Override
@@ -63,9 +71,31 @@ final class LazySqliteWaterProvider implements WaterProvider, AutoCloseable {
     }
 
     @Override
+    public WaterType waterTypeAt(double latitude, double longitude, double knownElevationMeters) {
+        CatalogEntry best = bestAt(latitude, longitude);
+        if (best != null) {
+            return best.type();
+        }
+        return seaBelowSeaLevel(knownElevationMeters) ? WaterType.OCEAN : WaterType.NONE;
+    }
+
+    @Override
     public WaterColumn waterColumnAt(double latitude, double longitude, double knownElevationMeters) {
         CatalogEntry best = bestAt(latitude, longitude);
-        return best == null ? WaterColumn.DRY : best.toColumn(knownElevationMeters);
+        if (best != null) {
+            return best.toColumn(knownElevationMeters);
+        }
+        return seaBelowSeaLevel(knownElevationMeters) ? WaterColumn.OCEAN : WaterColumn.DRY;
+    }
+
+    /** Whether the database has no sea polygons and this elevation is below sea level. */
+    private boolean seaBelowSeaLevel(double meters) {
+        return !hasOcean && !ElevationProvider.isNoData(meters) && meters < 0.0;
+    }
+
+    /** Whether the database holds sea polygons; without them the sea comes from the elevation. */
+    boolean hasOcean() {
+        return hasOcean;
     }
 
     /**

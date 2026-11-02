@@ -38,6 +38,38 @@ class SqliteWaterProviderTest {
     }
 
     @Test
+    void withoutSeaPolygonsTheSeaComesFromTheElevation() throws Exception {
+        Path database = createDatabase();
+        insertWaterBody(database, "LAKE", 10, 20, 12, 22);
+
+        WaterProvider provider = SqliteWaterProvider.load(database);
+        try {
+            assertThat(provider.waterColumnAt(13, 21, -40.0).type()).isEqualTo(WaterType.OCEAN);
+            assertThat(provider.waterTypeAt(13, 21, -40.0)).isEqualTo(WaterType.OCEAN);
+            assertThat(provider.waterColumnAt(13, 21, 5.0).type()).isEqualTo(WaterType.NONE);
+            assertThat(provider.waterColumnAt(13, 21, Double.NaN).type()).isEqualTo(WaterType.NONE);
+            // A lake below sea level stays a lake.
+            assertThat(provider.waterColumnAt(11, 21, -28.0).type()).isEqualTo(WaterType.LAKE);
+        } finally {
+            close(provider);
+        }
+    }
+
+    @Test
+    void withSeaPolygonsLandBelowSeaLevelOutsideThemStaysDry() throws Exception {
+        Path database = createDatabase();
+        insertWaterBody(database, "OCEAN", 0, 0, 10, 10);
+
+        WaterProvider provider = SqliteWaterProvider.load(database);
+        try {
+            assertThat(provider.waterColumnAt(5, 5, -40.0).type()).isEqualTo(WaterType.OCEAN);
+            assertThat(provider.waterColumnAt(15, 15, -4.0).type()).isEqualTo(WaterType.NONE);
+        } finally {
+            close(provider);
+        }
+    }
+
+    @Test
     void decodesGeometryLazilyAndCachesItAcrossLookups() throws Exception {
         Path database = createDatabase();
         insertWaterBody(database, "OCEAN", 0, 0, 10, 10);

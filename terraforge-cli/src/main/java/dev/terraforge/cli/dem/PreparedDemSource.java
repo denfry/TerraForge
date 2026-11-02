@@ -18,7 +18,7 @@ public final class PreparedDemSource implements DemSource {
     }
 
     public static PreparedDemSource open(Path file) throws IOException {
-        return new PreparedDemSource(MappedDemTile.open(file));
+        return new PreparedDemSource(MappedDemTile.load(file));
     }
 
     @Override public DemTileKey key() { return tile.key(); }

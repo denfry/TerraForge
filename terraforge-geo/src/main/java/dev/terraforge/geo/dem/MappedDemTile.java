@@ -49,14 +49,35 @@ public final class MappedDemTile implements DemTile {
      *                     with the grid declared in its header
      */
     public static MappedDemTile open(Path file) throws IOException {
+        return open(file, true);
+    }
+
+    /**
+     * Reads a prepared tile into the heap instead of mapping it. For the offline tools, which rewrite
+     * the tile they read: Windows refuses to replace a file while a mapping of it is alive, and the
+     * mapping lives until a GC, so merging bathymetry into a land tile failed there.
+     */
+    public static MappedDemTile load(Path file) throws IOException {
+        return open(file, false);
+    }
+
+    private static MappedDemTile open(Path file, boolean map) throws IOException {
         try (FileChannel channel = FileChannel.open(file, StandardOpenOption.READ)) {
             long size = channel.size();
             if (size < TfDemFormat.HEADER_BYTES) {
                 throw new IOException("Truncated .tfdem file: " + file + " (" + size + " bytes)");
             }
-            ByteBuffer mapped = channel
-                    .map(FileChannel.MapMode.READ_ONLY, 0, size)
-                    .order(ByteOrder.BIG_ENDIAN);
+            ByteBuffer mapped;
+            if (map) {
+                mapped = channel.map(FileChannel.MapMode.READ_ONLY, 0, size);
+            } else {
+                mapped = ByteBuffer.allocate(Math.toIntExact(size));
+                while (mapped.hasRemaining() && channel.read(mapped) >= 0) {
+                    // keep reading
+                }
+                mapped.flip();
+            }
+            mapped.order(ByteOrder.BIG_ENDIAN);
             TfDemHeader header = TfDemHeader.parse(mapped);
             if (size != header.expectedFileSize()) {
                 throw new IOException("Tile " + file + " is " + size + " bytes, header declares "
