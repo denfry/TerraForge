@@ -160,7 +160,7 @@ generation:
     farmland: true
     # Share of flat cropland that is tilled (0..1); the rest stays meadow. At a kilometre per block
     # real cropland covers whole regions, so tilling all of it makes an endless allotment.
-    farmland-share: 0.25
+    farmland-share: 0.04
     # Share of sugar cane kept beside water, 0..1. At a kilometre per block every river bank grows cane
     # from source to mouth.
     reed-density: 1.0
@@ -192,6 +192,18 @@ generation:
     cave-rarity: 7.0
     # Multiplier on emerald ore alone, on top of ore-multiplier.
     emerald-multiplier: 1.0
+
+  # Ruins and remains for players to find, each matched to its climate and holding loot from a
+  # vanilla table: stone-brick watchtowers, desert ruins with a cellar, jungle shrines, stone circles
+  # with something buried, abandoned camps, wrecks on beaches, mountain huts, snow shelters and crypts
+  # with a spawner under a well-head. Built from blocks every client since 1.16 knows. Not vanilla
+  # structures (generation.man-made-structures) and not infrastructure. Absent means none.
+  structures:
+    enabled: true
+    # At most one in each square of this many chunks a side; at least 3.
+    spacing-chunks: 12
+    # Share of squares that hold one, 0..1. Water and steep ground skip theirs.
+    chance: 0.6
 
 pregeneration:
   # Never permit an unbounded async queue; one chunk is the safe default.

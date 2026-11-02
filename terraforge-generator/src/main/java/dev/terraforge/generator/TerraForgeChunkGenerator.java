@@ -11,6 +11,7 @@ import dev.terraforge.generator.pipeline.TerrainPipeline;
 import dev.terraforge.generator.surface.SurfacePalette;
 import dev.terraforge.generator.underground.UndergroundGenerator;
 import dev.terraforge.generator.vegetation.VegetationPlan;
+import dev.terraforge.generator.structure.StructurePopulator;
 import dev.terraforge.generator.vegetation.VegetationPopulator;
 import java.util.List;
 import java.util.Random;
@@ -371,24 +372,29 @@ public final class TerraForgeChunkGenerator extends ChunkGenerator {
      */
     @Override
     public List<BlockPopulator> getDefaultPopulators(World world) {
-        if (!features.vegetation()) {
-            return List.of();
+        List<BlockPopulator> populators = new java.util.ArrayList<>();
+        var structures = features.structures();
+        if (structures.enabled() && structures.chance() > 0.0) {
+            // First: the vegetation grows only on open ground, so no tree comes up through a floor.
+            populators.add(new StructurePopulator(pipeline, structures.spacingChunks(), structures.chance()));
         }
-        BlockPopulator vegetation = new VegetationPopulator(pipeline,
-                new VegetationPlan(features.vegetationDensity(), features.customTrees(), features.farmland(),
-                        features.farmlandShare(), features.vegetationTuning()));
+        if (features.vegetation()) {
+            populators.add(new VegetationPopulator(pipeline,
+                    new VegetationPlan(features.vegetationDensity(), features.customTrees(), features.farmland(),
+                            features.farmlandShare(), features.vegetationTuning())));
+        }
         if (extent == null) {
-            return List.of(vegetation);
+            return List.copyOf(populators);
         }
-        return List.of(new BlockPopulator() {
+        return populators.stream().<BlockPopulator>map(inner -> new BlockPopulator() {
             @Override
             public void populate(WorldInfo worldInfo, Random random, int chunkX, int chunkZ,
                                  LimitedRegion region) {
                 if (!beyondEdge(chunkX, chunkZ)) {
-                    vegetation.populate(worldInfo, random, chunkX, chunkZ, region);
+                    inner.populate(worldInfo, random, chunkX, chunkZ, region);
                 }
             }
-        });
+        }).toList();
     }
 
     /** The planet's edge, or {@code null} when this world has no border. */
@@ -442,15 +448,28 @@ public final class TerraForgeChunkGenerator extends ChunkGenerator {
     public record Features(boolean karstCaves, boolean vanillaCaves, boolean vanillaDecorations,
                            boolean vegetation, double vegetationDensity, boolean customTrees, boolean farmland,
                            dev.terraforge.core.config.TerraForgeConfig.UndergroundSection underground,
-                           double farmlandShare, VegetationPlan.Tuning vegetationTuning) {
+                           double farmlandShare, VegetationPlan.Tuning vegetationTuning,
+                           dev.terraforge.core.config.TerraForgeConfig.StructuresSection structures) {
 
         public Features {
+            if (structures == null) {
+                structures = dev.terraforge.core.config.TerraForgeConfig.StructuresSection.off();
+            }
             if (underground == null) {
                 underground = dev.terraforge.core.config.TerraForgeConfig.UndergroundSection.off();
             }
             if (vegetationTuning == null) {
                 vegetationTuning = VegetationPlan.Tuning.CALIBRATED;
             }
+        }
+
+        /** No structures. */
+        public Features(boolean karstCaves, boolean vanillaCaves, boolean vanillaDecorations,
+                        boolean vegetation, double vegetationDensity, boolean customTrees, boolean farmland,
+                        dev.terraforge.core.config.TerraForgeConfig.UndergroundSection underground,
+                        double farmlandShare, VegetationPlan.Tuning vegetationTuning) {
+            this(karstCaves, vanillaCaves, vanillaDecorations, vegetation, vegetationDensity, customTrees,
+                    farmland, underground, farmlandShare, vegetationTuning, null);
         }
 
         /** Calibrated reeds, dead bushes and plants on sand. */
@@ -480,7 +499,8 @@ public final class TerraForgeChunkGenerator extends ChunkGenerator {
                     generation.vanillaDecorations(), vegetation.enabled(), vegetation.density(),
                     vegetation.customTrees(), vegetation.farmland(), generation.underground(),
                     vegetation.farmlandShare(), new VegetationPlan.Tuning(vegetation.reedDensity(),
-                            vegetation.deadBushDensity(), vegetation.plantsOnSand(), vegetation.legacyClients()));
+                            vegetation.deadBushDensity(), vegetation.plantsOnSand(), vegetation.legacyClients()),
+                    generation.structures());
         }
     }
 }

@@ -43,10 +43,13 @@ public final class VegetationPlan {
     private static final long WOODLAND_SALT = 0x574F4F44L;
     private static final long KELP_GAP_SALT = 0x4B474150L;
 
-    /** Edge of one crop field, in blocks: one crop, one orientation, one ripeness per field. */
-    static final int FIELD_SIZE = 16;
+    /**
+     * Edge of one crop field, in blocks: one crop, one orientation, one ripeness per field. Small
+     * plots in a patchwork, not sixteen-block squares that read as a farm laid out by a player.
+     */
+    static final int FIELD_SIZE = 10;
     /** Every this-many rows of a field is an irrigation channel. */
-    static final int CHANNEL_EVERY = 8;
+    static final int CHANNEL_EVERY = 5;
 
     private final double density;
     private final boolean customTrees;

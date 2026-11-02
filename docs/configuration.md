@@ -206,7 +206,7 @@ is named for what it does rather than for what one might want from it.
 | `density` | `1.0` | multiplier on every natural placement probability |
 | `custom-trees` | `true` | draw TerraForge's own procedural trees alongside vanilla's |
 | `farmland` | `true` | till flat cropland into crop fields |
-| `farmland-share` | `0.25` | share of flat cropland plots that are tilled; the rest grow as meadow |
+| `farmland-share` | `0.04` | share of flat cropland plots that are tilled; the rest grow as meadow |
 | `reed-density` | `1.0` | share of sugar cane kept beside water, `0..1` |
 | `dead-bush-density` | `1.0` | share of dead bushes kept, `0..1` |
 | `plants-on-sand` | `true` | grass, dry grass and sugar cane on sand; `false` leaves sand to cacti and dead bushes |
@@ -282,6 +282,19 @@ pass, now named `generation.vanilla-decorations`.
 | `caves` | `true` | winding cave systems under land |
 | `cave-rarity` | `7.0` | one cave system starts in one chunk of this many; lower means more caves |
 | `emerald-multiplier` | `1.0` | multiplier on emerald ore alone, on top of `ore-multiplier` |
+
+#### `generation.structures`
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `enabled` | `false` (`true` in a new config) | ruins and remains for players to find, each with loot from a vanilla table |
+| `spacing-chunks` | `12` | at most one in each square of this many chunks a side; at least 3 |
+| `chance` | `0.6` | share of squares that hold one; water and steep ground skip theirs |
+
+Which structure stands where follows the climate: watchtowers, crypts and stone circles in temperate
+lowland, desert ruins in the desert, shrines in the rain forest, camps on the savanna and in the
+taiga, huts in the mountains, snow shelters on the tundra, wrecks on beaches. All are built from blocks
+every client since 1.16 knows.
 
 What `vanilla-decorations` and `vanilla-caves` cannot give a scaled world. The pass runs inside
 chunk generation, on Paper's generation threads: it models the chunk's stone from the samples the

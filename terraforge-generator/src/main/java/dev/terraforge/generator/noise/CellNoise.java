@@ -71,7 +71,7 @@ public final class CellNoise {
         return t * t * (3.0 - 2.0 * t);
     }
 
-    private static double unit(long h) {
+    public static double unit(long h) {
         return (h >>> 11) * 0x1.0p-53;
     }
 }

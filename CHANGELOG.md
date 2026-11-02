@@ -39,6 +39,13 @@ not optional:
   and gullies, and slopes become even contour steps; the detail adds noise that follows the local
   slope -- a block or two on a plain, up to ten on a mountain side. Absent means `0`; a new config
   sets `1.0`.
+- `generation.structures`: ruins and remains for players to find, matched to the climate and
+  stocked from vanilla loot tables -- stone-brick watchtowers, desert ruins with a cellar under a
+  loose slab, stepped jungle shrines, stone circles with something buried at the centre, abandoned
+  camps, wrecks on beaches, mountain huts, snow shelters, and crypts with a spawner at the bottom of a
+  ladder shaft under a well-head. One at most per square of `spacing-chunks` (default 12), in a
+  `chance` share of them (default 0.6), on the flattest dry footprint in the chosen chunk. Only blocks
+  a 1.16 client knows. Absent means none; a new config turns them on.
 - `water.river-min-width-blocks`: rivers are widened as the world generates, to at least this many
   blocks and half as much again per tenfold discharge over 40 m³/s. Prepared rivers are one block
   wide at 1 block/km -- too narrow for a boat, and three quarters of them hidden under the trees on
@@ -146,6 +153,9 @@ not optional:
 
 ### Changed
 
+- Crop fields are ten blocks across instead of sixteen, with a channel every fifth row, and
+  `farmland-share` defaults to `0.04` instead of `0.25`: about six times less tilled land, in small
+  plots among meadows instead of a countryside of allotments.
 - No tree grows within two blocks of a river or lake, so crowns no longer close over the water.
 - Bare rock has no tuff, which a 1.16 client draws as cobblestone.
 - Trees grow in woods and clearings: the tree chance follows low-frequency noise instead of being the

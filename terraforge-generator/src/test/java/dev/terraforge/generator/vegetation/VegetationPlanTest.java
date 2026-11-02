@@ -224,7 +224,7 @@ class VegetationPlanTest {
         }
         int total = 144 * VegetationPlan.FIELD_SIZE * VegetationPlan.FIELD_SIZE;
         assertThat(crops).isGreaterThan(total / 2);
-        assertThat(channels).isBetween(total / 12, total / 6);
+        assertThat(channels).isBetween(total / 8, total / 4); // one row in CHANNEL_EVERY
         assertThat(meadow).isLessThan(total / 3); // fallow fields and the gaps in a pumpkin patch
         assertThat(cropKinds).contains(Material.WHEAT, Material.POTATOES, Material.CARROTS, Material.BEETROOTS,
                 Material.PUMPKIN_STEM);

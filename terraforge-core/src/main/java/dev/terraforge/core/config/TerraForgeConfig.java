@@ -46,7 +46,8 @@ public record TerraForgeConfig(
                         null, null, 1.0),
                 new WaterSection(true, true, true, 30.0, 1.0, null, null, null, null, 2.0),
                 new BiomesSection(true, 0.35),
-                new GenerationSection(true, false, false, false, false, 4, VegetationSection.defaults()),
+                new GenerationSection(true, false, false, false, false, 4, VegetationSection.defaults(),
+                        UndergroundSection.defaults(), StructuresSection.defaults()),
                 PregenerationSection.defaults(),
                 InfrastructureSection.allDisabled(),
                 new DataSection("data", "cache", "terraforge.db"),
@@ -302,15 +303,26 @@ public record TerraForgeConfig(
     public record GenerationSection(boolean naturalOnly, boolean caves, boolean vanillaCaves,
                                     boolean vanillaDecorations, boolean manMadeStructures,
                                     int workerThreads, VegetationSection vegetation,
-                                    UndergroundSection underground) {
+                                    UndergroundSection underground, StructuresSection structures) {
 
         public GenerationSection {
+            if (structures == null) {
+                structures = StructuresSection.off();
+            }
             if (vegetation == null) {
                 vegetation = VegetationSection.defaults();
             }
             if (underground == null) {
                 underground = UndergroundSection.defaults();
             }
+        }
+
+        /** Without a structures section: none. */
+        public GenerationSection(boolean naturalOnly, boolean caves, boolean vanillaCaves,
+                                 boolean vanillaDecorations, boolean manMadeStructures,
+                                 int workerThreads, VegetationSection vegetation, UndergroundSection underground) {
+            this(naturalOnly, caves, vanillaCaves, vanillaDecorations, manMadeStructures, workerThreads,
+                    vegetation, underground, null);
         }
 
         /** Without an underground section: every underground pass on. */
@@ -401,11 +413,32 @@ public record TerraForgeConfig(
      *                    bushes, as on a real dune or beach. Absent means on.
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
+    /**
+     * Ruins and remains scattered over the land for players to find, each with loot from a vanilla
+     * table: towers, desert ruins, jungle shrines, stone circles, camps, wrecks on beaches, mountain
+     * huts, snow shelters and crypts with a spawner. Absent means none, so a world generated before
+     * this existed does not grow ruins in its new chunks.
+     *
+     * @param enabled        place them at all
+     * @param spacingChunks  edge, in chunks, of the square that holds at most one; at least 3
+     * @param chance         share of squares that hold one, {@code 0..1}
+     */
+    public record StructuresSection(boolean enabled, int spacingChunks, double chance) {
+
+        public static StructuresSection off() {
+            return new StructuresSection(false, 12, 0.6);
+        }
+
+        public static StructuresSection defaults() {
+            return new StructuresSection(true, 12, 0.6);
+        }
+    }
+
     public record VegetationSection(boolean enabled, double density, Boolean customTrees, Boolean farmland,
                                     Double farmlandShare, Double reedDensity, Double deadBushDensity,
                                     Boolean plantsOnSand, Boolean legacyClients) {
 
-        public static final double DEFAULT_FARMLAND_SHARE = 0.25;
+        public static final double DEFAULT_FARMLAND_SHARE = 0.04;
 
         public VegetationSection {
             if (density == 0.0 || Double.isNaN(density)) {
