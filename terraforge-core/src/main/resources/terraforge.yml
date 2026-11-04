@@ -182,6 +182,27 @@ generation:
     # petals become classic flowers and the other two are left out. Turn on when players join on
     # versions before 1.19.4.
     legacy-clients: false
+    # Mean extra dark oaks per chunk, on top of the regular forest. 0 adds none.
+    dark-oak:
+      temperate-rainforest: 0.0
+      temperate-forest: 0.0
+    # Cocoa pods on jungle trunks: share of trunks with pods, and the chance per side of a low log.
+    cocoa:
+      tree-chance: 0.0
+      side-chance: 0.0
+    # Dense kelp patches in temperate oceans, on top of the sea bed's own kelp forests.
+    kelp:
+      # Mean extra patches per chunk, rising from the bed. 0 adds none.
+      patches-per-chunk: 0.0
+      columns-per-patch: 12
+      patch-radius: 3
+      # Blocks of open water left above a patch stalk, picked at random in this range.
+      surface-gap-min: 1
+      surface-gap-max: 8
+      # A patch stalk is cut to this share of its length, rounded up.
+      length-fraction: 1.0
+      # No patch stalk is longer than this; 0 means no limit. Limited stalks are generated fully grown.
+      max-height: 0
 
   # What lies under the ground, generated with the chunk on the generation threads -- never patched
   # into a live world afterwards. Heights follow this world's sea level and floor, not vanilla's, so

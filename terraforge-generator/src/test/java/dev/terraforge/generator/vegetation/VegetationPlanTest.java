@@ -358,6 +358,45 @@ class VegetationPlanTest {
     }
 
     @Test
+    void sandStaysBareWhenPlantsOnSandIsOff() {
+        VegetationPlan bare = new VegetationPlan(1.0, true, true, 1.0, new VegetationPlan.Tuning(1.0, 1.0, false));
+        Tally grown = new Tally();
+        Random random = new Random(17);
+        TerrainSample beach = new TerrainSample(5.0, 63, WaterType.NONE, 0,
+                LandcoverClass.UNKNOWN, ClimateBiome.BEACH, false);
+        for (int i = 0; i < COLUMNS; i++) {
+            grown.add(bare.choose(Column.plain(beach, Material.SAND, i % 141, i / 141).nearFreshWater(1, true), random));
+        }
+
+        assertThat(grown.reeds).isZero();
+        assertThat(grown.plantMaterials).doesNotContain(Material.SHORT_DRY_GRASS, Material.TALL_GRASS, Material.FERN);
+    }
+
+    @Test
+    void deadBushDensityKeepsOnlyThatShare() {
+        Tally full = deadBushes(1.0);
+        Tally fifth = deadBushes(0.2);
+
+        assertThat(full.plants).isPositive();
+        assertThat(fifth.plants).isBetween(full.plants / 8, full.plants / 3);
+    }
+
+    private static Tally deadBushes(double share) {
+        VegetationPlan plan = new VegetationPlan(1.0, true, true, 1.0, new VegetationPlan.Tuning(1.0, share, true));
+        Tally tally = new Tally();
+        Random random = new Random(5);
+        TerrainSample semi = new TerrainSample(300.0, 80, WaterType.NONE, 0,
+                LandcoverClass.SHRUBLAND, ClimateBiome.SEMI_DESERT, false);
+        for (int i = 0; i < COLUMNS * 5; i++) {
+            Placement placement = plan.choose(Column.plain(semi, Material.TERRACOTTA, i % 141, i / 141), random);
+            if (placement instanceof Placement.Plant plant && plant.material() == Material.DEAD_BUSH) {
+                tally.plants++;
+            }
+        }
+        return tally;
+    }
+
+    @Test
     void densityScalesEverythingAndZeroDisablesIt() {
         Tally full = tally(ClimateBiome.TEMPERATE_FOREST, LandcoverClass.TREE_COVER, Material.GRASS_BLOCK, 1.0);
         Tally half = tally(ClimateBiome.TEMPERATE_FOREST, LandcoverClass.TREE_COVER, Material.GRASS_BLOCK, 0.5);

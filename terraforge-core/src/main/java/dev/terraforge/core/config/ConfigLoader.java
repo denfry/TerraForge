@@ -104,6 +104,26 @@ public final class ConfigLoader {
         double deadBushDensity = config.generation().vegetation().deadBushDensity();
         require(deadBushDensity >= 0.0 && deadBushDensity <= 1.0,
                 "generation.vegetation.dead-bush-density must be between 0 and 1");
+        TerraForgeConfig.VegetationSection vegetation = config.generation().vegetation();
+        require(vegetation.darkOak().temperateRainforest() >= 0.0
+                        && Double.isFinite(vegetation.darkOak().temperateRainforest())
+                        && vegetation.darkOak().temperateForest() >= 0.0
+                        && Double.isFinite(vegetation.darkOak().temperateForest()),
+                "generation.vegetation.dark-oak densities must not be negative");
+        require(vegetation.cocoa().treeChance() >= 0.0 && vegetation.cocoa().treeChance() <= 1.0
+                        && vegetation.cocoa().sideChance() >= 0.0 && vegetation.cocoa().sideChance() <= 1.0,
+                "generation.vegetation.cocoa chances must be between 0 and 1");
+        TerraForgeConfig.KelpSection kelp = vegetation.kelp();
+        require(kelp.patchesPerChunk() >= 0.0 && Double.isFinite(kelp.patchesPerChunk()),
+                "generation.vegetation.kelp.patches-per-chunk must not be negative");
+        require(kelp.columnsPerPatch() >= 1, "generation.vegetation.kelp.columns-per-patch must be at least 1");
+        require(kelp.patchRadius() >= 0 && kelp.patchRadius() <= 7,
+                "generation.vegetation.kelp.patch-radius must be between 0 and 7");
+        require(kelp.surfaceGapMin() >= 0 && kelp.surfaceGapMax() >= kelp.surfaceGapMin(),
+                "generation.vegetation.kelp.surface-gap-min/max must form a non-negative range");
+        require(kelp.lengthFraction() > 0.0 && kelp.lengthFraction() <= 1.0,
+                "generation.vegetation.kelp.length-fraction must be above 0 and at most 1");
+        require(kelp.maxHeight() >= 0, "generation.vegetation.kelp.max-height must not be negative");
         double riverWidth = config.water().riverMinWidthBlocks();
         require(riverWidth >= 1.0 && riverWidth <= 8.0, "water.river-min-width-blocks must be between 1 and 8");
         TerraForgeConfig.StructuresSection structures = config.generation().structures();

@@ -66,6 +66,9 @@ not optional:
   ViaBackwards such a client sees wildflowers, pink petals, leaf litter and cactus flowers as brain
   coral fans; with this on they become classic flowers or are left out.
 - `generation.vegetation.reed-density`, `dead-bush-density` and `plants-on-sand`.
+- `generation.vegetation.dark-oak.*`, `cocoa.*` and `kelp.*`, all off by default: extra dark oaks per
+  chunk in dark and temperate forest, cocoa pods on jungle trunks, and dense kelp patches in temperate
+  oceans with their own stalk-length limit.
 - `generation.underground.emerald-multiplier`.
 - `generation.underground`: ores, stone pockets and cave systems, generated with the chunk on the
   generation threads and written to it once -- never patched into a live world. Vanilla 1.16's ore

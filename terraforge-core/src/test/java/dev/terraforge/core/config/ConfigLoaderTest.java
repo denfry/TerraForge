@@ -243,4 +243,44 @@ class ConfigLoaderTest {
                 d.generation(), d.pregeneration(), d.infrastructure(), section, d.cache(), d.towny(),
                 d.bluemap(), d.debug(), d.testRegion());
     }
+
+    @Test
+    @DisplayName("the server's dark oak, cocoa, kelp and emerald keys parse and validate")
+    void floraAndEmeraldKeysParse() throws IOException {
+        String yaml = """
+                generation:
+                  vegetation:
+                    dark-oak: {temperate-rainforest: 8.0, temperate-forest: 1.5}
+                    cocoa: {tree-chance: 0.6, side-chance: 0.3}
+                    kelp: {patches-per-chunk: 1.5, columns-per-patch: 12, patch-radius: 3, surface-gap-min: 1, surface-gap-max: 8, length-fraction: 0.5, max-height: 25}
+                  underground:
+                    emerald-multiplier: 2.5
+                """;
+        TerraForgeConfig read = loader.read(new java.io.ByteArrayInputStream(yaml.getBytes()));
+        var vegetation = read.generation().vegetation();
+        assertThat(vegetation.darkOak()).isEqualTo(new TerraForgeConfig.DarkOakSection(8.0, 1.5));
+        assertThat(vegetation.cocoa()).isEqualTo(new TerraForgeConfig.CocoaSection(0.6, 0.3));
+        assertThat(vegetation.kelp()).isEqualTo(new TerraForgeConfig.KelpSection(1.5, 12, 3, 1, 8, 0.5, 25));
+        assertThat(read.generation().underground().emeraldMultiplier()).isEqualTo(2.5);
+
+        TerraForgeConfig c = loader.validate(shippedConfig());
+        var g = c.generation();
+        var generation = new TerraForgeConfig.GenerationSection(g.naturalOnly(), g.caves(), g.vanillaCaves(),
+                g.vanillaDecorations(), g.manMadeStructures(), g.workerThreads(), vegetation,
+                read.generation().underground(), g.structures());
+        assertThat(loader.validate(new TerraForgeConfig(c.world(), c.scale(), c.earth(), c.terrain(), c.water(),
+                c.biomes(), generation, c.pregeneration(), c.infrastructure(), c.data(), c.cache(), c.towny(),
+                c.bluemap(), c.debug(), c.testRegion()))).isNotNull();
+
+        var bad = new TerraForgeConfig.VegetationSection(true, 1.0, true, true, null, null, null, null, null,
+                null, null, new TerraForgeConfig.KelpSection(1.0, 12, 3, 5, 2, 0.5, 25));
+        var badGeneration = new TerraForgeConfig.GenerationSection(g.naturalOnly(), g.caves(), g.vanillaCaves(),
+                g.vanillaDecorations(), g.manMadeStructures(), g.workerThreads(), bad, g.underground(),
+                g.structures());
+        assertThatThrownBy(() -> loader.validate(new TerraForgeConfig(c.world(), c.scale(), c.earth(), c.terrain(),
+                c.water(), c.biomes(), badGeneration, c.pregeneration(), c.infrastructure(), c.data(), c.cache(),
+                c.towny(), c.bluemap(), c.debug(), c.testRegion())))
+                .isInstanceOf(ConfigLoader.ConfigException.class)
+                .hasMessageContaining("generation.vegetation.kelp.surface-gap");
+    }
 }

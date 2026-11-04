@@ -38,6 +38,19 @@ class UndergroundGeneratorTest {
      * In the legacy frame every ore must land inside 0..255 and at vanilla 1.16's heights.
      */
     @Test
+    void emeraldMultiplierScalesEmeraldAlone() {
+        List<OreBand> plain = OreTable.ores(LEGACY_FLOOR, LEGACY_SEA, LEGACY_TOP);
+        List<OreBand> rich = OreTable.ores(LEGACY_FLOOR, LEGACY_SEA, LEGACY_TOP, 2.5);
+
+        assertThat(rich).hasSameSizeAs(plain);
+        for (int i = 0; i < plain.size(); i++) {
+            double factor = plain.get(i).mineral() == Mineral.EMERALD ? 2.5 : 1.0;
+            assertThat(rich.get(i).count()).isEqualTo(plain.get(i).count() * factor);
+            assertThat(rich.get(i).name()).isEqualTo(plain.get(i).name());
+        }
+    }
+
+    @Test
     void everyOreLandsWhereA116ClientCanSeeIt() {
         UndergroundGenerator generator = new UndergroundGenerator(ALL_ON, LEGACY_FLOOR, LEGACY_SEA, LEGACY_TOP);
         Map<Mineral, int[]> range = new EnumMap<>(Mineral.class);

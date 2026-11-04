@@ -211,6 +211,21 @@ is named for what it does rather than for what one might want from it.
 | `dead-bush-density` | `1.0` | share of dead bushes kept, `0..1` |
 | `plants-on-sand` | `true` | grass, dry grass and sugar cane on sand; `false` leaves sand to cacti and dead bushes |
 | `legacy-clients` | `false` | only plants a 1.16 client draws correctly: no wildflowers, pink petals, leaf litter or cactus flowers, which ViaBackwards shows as coral fans |
+| `dark-oak.temperate-rainforest` | `0.0` | mean extra dark oaks per chunk in dark forest |
+| `dark-oak.temperate-forest` | `0.0` | the same in temperate forest |
+| `cocoa.tree-chance` | `0.0` | share of jungle trunks that carry cocoa pods |
+| `cocoa.side-chance` | `0.0` | chance of a pod on each side of the lowest three logs |
+| `kelp.patches-per-chunk` | `0.0` | mean extra dense kelp patches per chunk in temperate oceans |
+| `kelp.columns-per-patch` | `12` | stalks attempted in one patch |
+| `kelp.patch-radius` | `3` | how far a stalk lands from its patch centre (0..7) |
+| `kelp.surface-gap-min`, `-max` | `1`, `8` | blocks of open water left above a patch stalk |
+| `kelp.length-fraction` | `1.0` | a patch stalk is cut to this share of its length, rounded up |
+| `kelp.max-height` | `0` | no patch stalk is longer than this; `0` means no limit |
+
+The dark oak, cocoa and kelp patch passes run per chunk after the columns, each from its own random,
+so turning one on does not move anything the columns placed. A limited patch stalk is generated fully
+grown and does not grow past its limit. The kelp forests of the sea bed itself are not affected by
+`kelp.*`: they are always half their old length, at most 25 blocks, with a fully grown tip.
 
 This is the vegetation `vanilla-decorations` cannot give a scaled world. It runs as a Paper
 `BlockPopulator` on the chunk and its one-chunk buffer, in this world's vertical frame, and places

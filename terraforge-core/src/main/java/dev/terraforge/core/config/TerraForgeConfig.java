@@ -481,7 +481,8 @@ public record TerraForgeConfig(
 
     public record VegetationSection(boolean enabled, double density, Boolean customTrees, Boolean farmland,
                                     Double farmlandShare, Double reedDensity, Double deadBushDensity,
-                                    Boolean plantsOnSand, Boolean legacyClients) {
+                                    Boolean plantsOnSand, Boolean legacyClients, DarkOakSection darkOak,
+                                    CocoaSection cocoa, KelpSection kelp) {
 
         public static final double DEFAULT_FARMLAND_SHARE = 0.04;
 
@@ -510,6 +511,23 @@ public record TerraForgeConfig(
             if (legacyClients == null) {
                 legacyClients = Boolean.FALSE;
             }
+            if (darkOak == null) {
+                darkOak = new DarkOakSection(null, null);
+            }
+            if (cocoa == null) {
+                cocoa = new CocoaSection(null, null);
+            }
+            if (kelp == null) {
+                kelp = new KelpSection(null, null, null, null, null, null, null);
+            }
+        }
+
+        /** Without the extra dark oak, cocoa and kelp passes. */
+        public VegetationSection(boolean enabled, double density, Boolean customTrees, Boolean farmland,
+                                 Double farmlandShare, Double reedDensity, Double deadBushDensity,
+                                 Boolean plantsOnSand, Boolean legacyClients) {
+            this(enabled, density, customTrees, farmland, farmlandShare, reedDensity, deadBushDensity,
+                    plantsOnSand, legacyClients, null, null, null);
         }
 
         /** Without the legacy-client switch: every plant as on the server's version. */
@@ -532,7 +550,84 @@ public record TerraForgeConfig(
         }
 
         public static VegetationSection defaults() {
-            return new VegetationSection(true, 1.0, true, true, DEFAULT_FARMLAND_SHARE, 1.0, 1.0, true, false);
+            return new VegetationSection(true, 1.0, true, true, DEFAULT_FARMLAND_SHARE, 1.0, 1.0, true, false,
+                    null, null, null);
+        }
+    }
+
+    /**
+     * Dark oaks grown on top of the regular forest, as mean trees per chunk. Off by default.
+     *
+     * @param temperateRainforest trees per chunk in {@code TEMPERATE_RAINFOREST} (dark forest)
+     * @param temperateForest     trees per chunk in {@code TEMPERATE_FOREST}
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record DarkOakSection(Double temperateRainforest, Double temperateForest) {
+        public DarkOakSection {
+            if (temperateRainforest == null) {
+                temperateRainforest = 0.0;
+            }
+            if (temperateForest == null) {
+                temperateForest = 0.0;
+            }
+        }
+    }
+
+    /**
+     * Cocoa pods on the trunks of tropical forests. Off by default.
+     *
+     * @param treeChance share of jungle trunks that carry pods, {@code 0..1}
+     * @param sideChance chance of a pod on each of the four sides of the lowest three logs, {@code 0..1}
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record CocoaSection(Double treeChance, Double sideChance) {
+        public CocoaSection {
+            if (treeChance == null) {
+                treeChance = 0.0;
+            }
+            if (sideChance == null) {
+                sideChance = 0.0;
+            }
+        }
+    }
+
+    /**
+     * Kelp: how long a stalk may be, and optional dense patches on top of the sea bed's own.
+     *
+     * @param patchesPerChunk mean extra patches per chunk in temperate oceans; {@code 0} adds none
+     * @param columnsPerPatch stalks attempted in one patch
+     * @param patchRadius     how far a stalk lands from its patch centre, in blocks
+     * @param surfaceGapMin   fewest blocks of open water left above a patch stalk
+     * @param surfaceGapMax   most blocks of open water left above a patch stalk
+     * @param lengthFraction  every stalk is cut to this share of its length, rounded up, {@code 0..1}
+     * @param maxHeight       no stalk is longer than this; {@code 0} means no limit
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record KelpSection(Double patchesPerChunk, Integer columnsPerPatch, Integer patchRadius,
+                              Integer surfaceGapMin, Integer surfaceGapMax, Double lengthFraction,
+                              Integer maxHeight) {
+        public KelpSection {
+            if (patchesPerChunk == null) {
+                patchesPerChunk = 0.0;
+            }
+            if (columnsPerPatch == null) {
+                columnsPerPatch = 12;
+            }
+            if (patchRadius == null) {
+                patchRadius = 3;
+            }
+            if (surfaceGapMin == null) {
+                surfaceGapMin = 1;
+            }
+            if (surfaceGapMax == null) {
+                surfaceGapMax = 8;
+            }
+            if (lengthFraction == null) {
+                lengthFraction = 1.0;
+            }
+            if (maxHeight == null) {
+                maxHeight = 0;
+            }
         }
     }
 
