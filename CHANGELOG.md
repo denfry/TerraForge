@@ -9,6 +9,12 @@ format. Both are stated explicitly per release, because either one means regener
 
 ## [Unreleased]
 
+### Added
+
+- `/earth world adopt`: takes an existing `earth` at the vanilla height (-64..320) on the TerraForge generator under
+  management without staging anything. No height datapack is written or required, so a world whose old manifest
+  pointed at a datapack the server no longer reads (26.x) can be verified again and pregeneration re-enabled.
+
 **Generation changes again in this release** (shores, relief curve, underground, relief detail, biome borders, surfaces, vegetation): regenerate rather
 than mix old and new chunks.
 

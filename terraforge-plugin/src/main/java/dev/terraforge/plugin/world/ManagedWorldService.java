@@ -115,6 +115,53 @@ public final class ManagedWorldService {
         stager.stage(plan.serverRoot(), plan.worldContainer(), manifest, edits);
     }
 
+    /**
+     * Adopts an Earth world that already exists at the vanilla height (-64..320) and runs on the
+     * TerraForge generator, without staging anything: no datapack, no edits to server files, nothing
+     * inside the world is touched. Used when the world was generated before TerraForge managed it, or
+     * when an old manifest had to be moved aside (for example its height datapack is in a format the
+     * server no longer reads). The manifest is written as staged and then verified on the spot through
+     * the same path as {@link #verify}, so an adopted world passes exactly the startup checks.
+     *
+     * @param worldName       the configured managed world name
+     * @param profile         the configured vertical profile; must be the vanilla height
+     * @param snapshotFactory builds the live snapshot (its data fingerprint is recorded)
+     * @param onFailure       receives every reason adoption was refused or verification failed
+     * @return true once the adopted world is verified and ready
+     */
+    public boolean adopt(String worldName, VerticalProfile profile, Function<ManagedWorldManifest, LiveWorldSnapshot> snapshotFactory,
+                         Consumer<String> onFailure) throws IOException {
+        requireCoordinator();
+        if (manifests.load().isPresent()) {
+            onFailure.accept("a managed-world manifest is already present; move plugins/TerraForge/managed-world.json aside first");
+            return false;
+        }
+        if (profile.needsDatapack()) {
+            onFailure.accept("only a world at the vanilla height (-64..320) can be adopted; terrain.min-y/max-y say "
+                    + profile.minY() + ".." + profile.maxY());
+            return false;
+        }
+        ManagedWorldManifest probe = new ManagedWorldManifest(ManagedWorldManifest.SCHEMA_VERSION, ManagedWorldState.PENDING_RESTART,
+                worldName, profile.minY(), profile.maxY(), profile.fingerprint(), ManagedWorldManifest.NO_DATAPACK_FINGERPRINT,
+                ManagedWorldManifest.NO_DATAPACK_FINGERPRINT, List.of(), "existing earth world adopted by TerraForge");
+        LiveWorldSnapshot live = snapshotFactory.apply(probe);
+        List<String> refusals = new ArrayList<>();
+        if (!worldName.equals(live.name())) refusals.add("world " + worldName + " is not loaded");
+        if (!live.primary()) refusals.add(worldName + " is not the primary world");
+        if (!live.terraForgeGenerator()) refusals.add(worldName + " is not using the TerraForge generator");
+        if (live.minY() != profile.minY() || live.maxY() != profile.maxY())
+            refusals.add("world height " + live.minY() + ".." + live.maxY() + " does not match the configuration");
+        if (live.dataFingerprint() == null || !live.dataFingerprint().matches("[0-9a-f]{64}"))
+            refusals.add("the DEM fingerprint is still being computed; try again in a minute");
+        if (!refusals.isEmpty()) {
+            refusals.forEach(onFailure);
+            return false;
+        }
+        manifests.save(new ManagedWorldManifest(probe.schemaVersion(), probe.state(), probe.worldName(), probe.minY(), probe.maxY(),
+                probe.configFingerprint(), live.dataFingerprint(), probe.datapackFingerprint(), List.of(), probe.reason()));
+        return verifier.verifyOnEnable(snapshotFactory, onFailure);
+    }
+
     /** Deletes a staged-but-not-yet-created earth world only when TerraForge provably owns every entry inside it. */
     public void abort(Path serverRoot, Path worldContainer) throws IOException {
         requireCoordinator();

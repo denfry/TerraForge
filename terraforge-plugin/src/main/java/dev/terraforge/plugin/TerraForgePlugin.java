@@ -466,7 +466,7 @@ public final class TerraForgePlugin extends JavaPlugin implements Listener {
         }
         if (!managedWorldReady) {
             getLogger().warning(LOG_PREFIX + "Managed Earth world is not verified; managed pregeneration and "
-                    + "world commands stay disabled until the world is re-staged.");
+                    + "world commands stay disabled until the world is re-staged (an existing world at the vanilla height: /earth world adopt).");
         }
     }
 

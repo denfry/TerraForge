@@ -9,7 +9,7 @@ import java.util.Locale;
 import org.bukkit.command.CommandSender;
 
 /**
- * Routes {@code /earth world plan|create|status|verify|abort} to {@link dev.terraforge.plugin.world.ManagedWorldService}.
+ * Routes {@code /earth world plan|create|status|verify|adopt|abort} to {@link dev.terraforge.plugin.world.ManagedWorldService}.
  *
  * <p>{@code verify} has no direct one-call analogue on the service beyond {@link
  * dev.terraforge.plugin.world.ManagedWorldService#verify}, which was added alongside this handler: it
@@ -17,7 +17,7 @@ import org.bukkit.command.CommandSender;
  */
 public final class WorldCommandHandler implements EarthSubcommand {
     static final String PERMISSION = "terraforge.command.world";
-    private static final List<String> VERBS = List.of("plan", "create", "status", "verify", "abort");
+    private static final List<String> VERBS = List.of("plan", "create", "status", "verify", "adopt", "abort");
 
     private final WorldCommandContext context;
 
@@ -34,6 +34,7 @@ public final class WorldCommandHandler implements EarthSubcommand {
             case "create" -> create(sender);
             case "status" -> status(sender);
             case "verify" -> verify(sender);
+            case "adopt" -> adopt(sender);
             case "abort" -> abort(sender);
             default -> usage();
         };
@@ -100,6 +101,22 @@ public final class WorldCommandHandler implements EarthSubcommand {
             return builder.build();
         } catch (IOException | RuntimeException exception) {
             return CommandResult.sanitizedError(sender, exception, "Verifying the managed Earth world");
+        }
+    }
+
+    private CommandResult adopt(CommandSender sender) {
+        try {
+            List<String> failures = new ArrayList<>();
+            boolean ready = context.service().adopt(context.configuredWorldName(), context.verticalProfile(),
+                    context.liveSnapshotFactory(), failures::add);
+            context.onVerifyResult(ready);
+            if (ready) return CommandResult.success("Existing Earth world adopted and verified; managed operations are enabled.");
+            CommandResult.Builder builder = CommandResult.builder();
+            builder.line(CommandResult.Level.ERROR, "Existing Earth world was not adopted:");
+            failures.forEach(failure -> builder.line(CommandResult.Level.WARNING, "- " + failure));
+            return builder.build();
+        } catch (IOException | RuntimeException exception) {
+            return CommandResult.sanitizedError(sender, exception, "Adopting the existing Earth world");
         }
     }
 

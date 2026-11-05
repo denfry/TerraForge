@@ -45,6 +45,8 @@ public final class BootstrapDatapackService {
         ManagedWorldManifest state = manifest.get();
         if (state.state() == ManagedWorldState.INVALID || state.state() == ManagedWorldState.ABSENT)
             throw new IOException("managed Earth manifest is not eligible for datapack discovery");
+        // An adopted world at the vanilla height has no datapack to discover.
+        if (state.withoutDatapack()) return;
 
         Path serverRoot = pluginDataDirectory.toAbsolutePath().normalize().getParent().getParent();
         Path pack = serverRoot.resolve("earth/datapacks/" + DATAPACK_DIRECTORY_NAME).normalize();

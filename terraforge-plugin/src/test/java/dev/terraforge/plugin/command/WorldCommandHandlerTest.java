@@ -72,7 +72,7 @@ class WorldCommandHandlerTest {
         WorldCommandHandler handler = new WorldCommandHandler(context(executableEnvironment(), planOnlyService()));
         assertThat(handler.suggest(sender(true), List.of("cr"))).containsExactly("create");
         assertThat(handler.suggest(sender(true), List.of(""))).containsExactlyInAnyOrder(
-                "plan", "create", "status", "verify", "abort");
+                "plan", "create", "status", "verify", "adopt", "abort");
     }
 
     @Test void planReportsEveryCheckAndThatTheResultIsExecutable() {

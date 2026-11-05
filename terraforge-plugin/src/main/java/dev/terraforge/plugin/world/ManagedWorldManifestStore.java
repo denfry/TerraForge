@@ -33,7 +33,7 @@ public final class ManagedWorldManifestStore {
                 || m.state() == ManagedWorldState.ABSENT || !"earth".equals(m.worldName())
                 || m.minY() >= m.maxY() || !fingerprint(m.configFingerprint())
                 || !fingerprint(m.dataFingerprint()) || !fingerprint(m.datapackFingerprint())
-                || m.ownedStagingFiles() == null || m.ownedStagingFiles().isEmpty()
+                || m.ownedStagingFiles() == null || (m.ownedStagingFiles().isEmpty() && !m.withoutDatapack())
                 || m.reason() == null || m.reason().length() > 256) {
             throw new IOException("managed-world manifest is invalid");
         }
